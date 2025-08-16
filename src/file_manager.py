@@ -1,63 +1,105 @@
-import os
+"""
+File management for the invoice reconciliation tool.
+Handles PDF stamping and file organization.
+"""
+
 import shutil
-import logging
-from datetime import datetime
+from pathlib import Path
+
 import fitz  # PyMuPDF
 
-logger = logging.getLogger(__name__)
+from .settings import settings
+from .logging_config import get_module_logger
+
 
 class FileManager:
-    def __init__(self, approved_dir: str, review_dir: str):
-        self.approved_dir = approved_dir
-        self.review_dir = review_dir
-        os.makedirs(approved_dir, exist_ok=True)
-        os.makedirs(review_dir, exist_ok=True)
-
-    def move_file(self, src: str, approved: bool, vendor: str | None = None) -> str:
-        """Move file to appropriate directory with vendor prefix"""
-        dest_dir = self.approved_dir if approved else self.review_dir
-        original_filename = os.path.basename(src)
+    """Handles file operations for processed invoices."""
+    
+    def __init__(self, output_dir: str = "data/output"):
+        """Initialize file manager with output directory."""
+        self.logger = get_module_logger('file_manager')
+        self.output_dir = Path(output_dir)
+        self.approved_dir = self.output_dir / "approved"
+        self.review_dir = self.output_dir / "review"
         
-        # Add vendor prefix if provided
-        if vendor:
-            filename = f"{vendor.upper()}_{original_filename}"
-        else:
-            filename = original_filename
+        # Create directories
+        self.approved_dir.mkdir(parents=True, exist_ok=True)
+        self.review_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.logger.info(f"FileManager initialized with output directory: {self.output_dir}")
+    
+    def stamp_pdf(self, pdf_path: str, status: str) -> Path:
+        """
+        Stamp PDF with approval status and move to appropriate directory.
+        
+        Args:
+            pdf_path: Path to the original PDF file
+            status: Status to stamp ("APPROVED" or "REQUIRES REVIEW")
             
-        dest = os.path.join(dest_dir, filename)
-        shutil.move(src, dest)
-        logger.info(f"Moved file {src} to {dest}")
-        return dest
-
-    def stamp_pdf(self, pdf_path: str, stamp_text: str, pic_name: str = "AUTO-SYSTEM", date: str | None = None):
-        """Stamp PDF with approval/review information"""
-        date_str = date or datetime.now().strftime('%Y-%m-%d %H:%M')
-        doc = fitz.open(pdf_path)
+        Returns:
+            Path to the stamped file in the output directory
+        """
+        if not settings.enable_pdf_stamping:
+            self.logger.info("PDF stamping disabled in settings")
+            return self._copy_without_stamping(pdf_path, status)
         
-        # Stamp on the last page
-        page = doc[-1]
-        text = f"{stamp_text}\nBy {pic_name}\n{date_str}"
+        source_path = Path(pdf_path)
+        target_dir = self.approved_dir if status == "APPROVED" else self.review_dir
+        target_path = target_dir / source_path.name
         
-        # Position stamp in top-right corner
-        rect = page.rect
-        stamp_x = rect.width - 150
-        stamp_y = 50
+        self.logger.info(f"Stamping PDF: {source_path.name} with status: {status}")
         
-        # Choose color based on stamp type
-        if "APPROVED" in stamp_text.upper():
-            color = (0, 0.7, 0)  # Green
-        else:
-            color = (0.8, 0.4, 0)  # Orange for manual review
+        try:
+            # Open the PDF
+            doc = fitz.open(pdf_path)
             
-        page.insert_text((stamp_x, stamp_y), text, fontsize=10, color=color)
-        doc.save(pdf_path)
-        doc.close()
-        logger.info(f"Stamped PDF {pdf_path} with: {stamp_text}")
-
-    def copy_file_for_processing(self, src: str, temp_dir: str, vendor: str | None = None) -> str:
-        """Create a temporary copy for processing to avoid modifying the original"""
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_filename = f"temp_{os.path.basename(src)}"
-        temp_path = os.path.join(temp_dir, temp_filename)
-        shutil.copy2(src, temp_path)
-        return temp_path
+            # Add stamp to first page
+            page = doc[0]
+            rect = page.rect
+            
+            # Position stamp based on settings
+            if settings.stamp_position == "top-right":
+                stamp_rect = fitz.Rect(rect.width - 150, 20, rect.width - 20, 60)
+            elif settings.stamp_position == "top-left":
+                stamp_rect = fitz.Rect(20, 20, 150, 60)
+            elif settings.stamp_position == "bottom-left":
+                stamp_rect = fitz.Rect(20, rect.height - 60, 150, rect.height - 20)
+            else:  # bottom-right (default)
+                stamp_rect = fitz.Rect(rect.width - 150, rect.height - 60, rect.width - 20, rect.height - 20)
+            
+            # Set stamp color based on status
+            color = (0, 0.7, 0) if status == "APPROVED" else (0.8, 0, 0)  # Green for approved, red for review
+            
+            # Add the stamp
+            page.insert_textbox(
+                stamp_rect,
+                status,
+                fontsize=12,
+                fontname="helv",
+                color=color,
+                fill=(1, 1, 1),  # White background
+                border_width=2,
+                align=1  # Center align
+            )
+            
+            # Save stamped PDF
+            doc.save(str(target_path))
+            doc.close()
+            
+            self.logger.info(f"Successfully stamped and saved: {target_path}")
+            return target_path
+            
+        except Exception as e:
+            self.logger.error(f"Failed to stamp PDF {source_path.name}: {str(e)}")
+            # Fallback: copy without stamping
+            return self._copy_without_stamping(pdf_path, status)
+    
+    def _copy_without_stamping(self, pdf_path: str, status: str) -> Path:
+        """Copy PDF without stamping as fallback."""
+        source_path = Path(pdf_path)
+        target_dir = self.approved_dir if status == "APPROVED" else self.review_dir
+        target_path = target_dir / source_path.name
+        
+        shutil.copy2(pdf_path, target_path)
+        self.logger.info(f"Copied without stamping: {target_path}")
+        return target_path

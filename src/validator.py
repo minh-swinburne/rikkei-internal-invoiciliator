@@ -1,87 +1,113 @@
-import logging
+"""
+Business rule validation for invoice and purchase order reconciliation.
+"""
+
+from typing import List
+
 from .models import Invoice, PurchaseOrder, ValidationResult
+from .logging_config import get_module_logger
 
-logger = logging.getLogger(__name__)
 
+class InvoiceValidator:
+    """Validates invoice and purchase order data according to business rules."""
+    
+    def __init__(self):
+        """Initialize the validator."""
+        self.logger = get_module_logger('validator')
+    
+    def validate(self, invoice: Invoice, purchase_order: PurchaseOrder) -> ValidationResult:
+        """
+        Validate invoice against purchase order according to business rules.
+        
+        Args:
+            invoice: Invoice data
+            purchase_order: Purchase order data
+            
+        Returns:
+            ValidationResult with approval status and any issues found
+        """
+        self.logger.info(f"Validating invoice {invoice.invoice_number} against PO {purchase_order.po_number}")
+        
+        issues: List[str] = []
+        is_approved = True
+        
+        # Rule 1: PO numbers must match
+        if invoice.po_number != purchase_order.po_number:
+            issues.append(f"PO number mismatch: Invoice {invoice.po_number} vs PO {purchase_order.po_number}")
+            is_approved = False
+            self.logger.warning(f"PO number mismatch: {invoice.po_number} vs {purchase_order.po_number}")
+        
+        # Rule 2: Validate items
+        invoice_items = {item.sku: item for item in invoice.items if item.sku}
+        po_items = {item.sku: item for item in purchase_order.items if item.sku}
+        
+        for sku, invoice_item in invoice_items.items():
+            if sku not in po_items:
+                issues.append(f"Item {sku} in invoice but not in PO")
+                is_approved = False
+                self.logger.warning(f"Item {sku} in invoice but not in PO")
+                continue
+            
+            po_item = po_items[sku]
+            
+            # Rule 3: Unit prices must match
+            if invoice_item.unit_price != po_item.unit_price:
+                issues.append(f"Unit price mismatch for {sku}: Invoice ${invoice_item.unit_price} vs PO ${po_item.unit_price}")
+                is_approved = False
+                self.logger.warning(f"Unit price mismatch for {sku}: ${invoice_item.unit_price} vs ${po_item.unit_price}")
+            
+            # Rule 4: Partial deliveries are acceptable (shipped <= ordered)
+            if invoice_item.quantity_shipped and invoice_item.quantity_shipped > po_item.quantity_ordered:
+                issues.append(f"Over-shipment for {sku}: Shipped {invoice_item.quantity_shipped} vs Ordered {po_item.quantity_ordered}")
+                is_approved = False
+                self.logger.warning(f"Over-shipment for {sku}: {invoice_item.quantity_shipped} vs {po_item.quantity_ordered}")
+        
+        # Rule 5: Check for items in PO but not in invoice (informational)
+        for sku in po_items:
+            if sku not in invoice_items:
+                issues.append(f"Item {sku} in PO but not delivered in invoice (partial delivery)")
+                self.logger.info(f"Partial delivery: Item {sku} in PO but not in invoice")
+        
+        # Rule 6: Check for missing critical identifiers
+        if not invoice.invoice_number:
+            issues.append("Missing invoice number")
+            is_approved = False
+            self.logger.error("Missing invoice number")
+        
+        if not purchase_order.po_number:
+            issues.append("Missing PO number")
+            is_approved = False
+            self.logger.error("Missing PO number")
+        
+        # Rule 7: Detect credit memos (require manual review)
+        if any("credit" in str(item.description).lower() for item in invoice.items if item.description):
+            issues.append("Credit memo detected - requires manual review")
+            is_approved = False
+            self.logger.warning("Credit memo detected")
+        
+        result = ValidationResult(
+            is_approved=is_approved,
+            issues=issues,
+            total_invoice_amount=sum(
+                (item.quantity_shipped or 0) * item.unit_price 
+                for item in invoice.items 
+                if item.unit_price
+            ),
+            total_po_amount=sum(
+                item.quantity_ordered * item.unit_price 
+                for item in purchase_order.items 
+                if item.unit_price
+            )
+        )
+        
+        status = "APPROVED" if is_approved else "REQUIRES REVIEW"
+        self.logger.info(f"Validation complete: {status} - {len(issues)} issues found")
+        
+        return result
+
+
+# Backward compatibility - keep the original function
 def validate_invoice_po(invoice: Invoice, po: PurchaseOrder) -> ValidationResult:
-    """Validate invoice against purchase order according to business rules"""
-    warnings = []
-    errors = []
-    
-    # Rule 1: PO number must match
-    if invoice.po_number != po.po_number:
-        errors.append(f"PO number mismatch: Invoice {invoice.po_number} vs PO {po.po_number}")
-        return ValidationResult(
-            approved=False, 
-            reason="PO number mismatch", 
-            manual_review=True,
-            errors=errors
-        )
-
-    # Rule 2: Item matching by SKU or VPN
-    unmatched_items = []
-    for inv_item in invoice.items:
-        match = po.get_item_by_identifier(inv_item.get_identifier())
-        
-        if not match:
-            unmatched_items.append(inv_item)
-            continue
-            
-        # Rule 3: Unit price must match (with small tolerance for rounding)
-        price_tolerance = 0.01
-        if abs(inv_item.unit_price - match.unit_price) > price_tolerance:
-            errors.append(f"Unit price mismatch for {inv_item.get_identifier()}: "
-                         f"Invoice ${inv_item.unit_price} vs PO ${match.unit_price}")
-        
-        # Rule 4: Quantity validation
-        if inv_item.quantity_shipped is not None:
-            # Check if shipped quantity exceeds ordered quantity
-            if inv_item.quantity_shipped > match.quantity_ordered:
-                errors.append(f"Shipped quantity ({inv_item.quantity_shipped}) exceeds "
-                             f"ordered quantity ({match.quantity_ordered}) for {inv_item.description}")
-            
-            # Warn about partial shipments
-            elif inv_item.quantity_shipped < match.quantity_ordered:
-                warnings.append(f"Partial shipment: {inv_item.quantity_shipped} of "
-                               f"{match.quantity_ordered} for {inv_item.description}")
-
-    # Rule 5: Credit memo handling
-    if invoice.is_credit_memo:
-        warnings.append("Invoice is a credit memo - manual review recommended")
-        return ValidationResult(
-            approved=False, 
-            reason="Credit memo detected", 
-            manual_review=True,
-            warnings=warnings
-        )
-    
-    # Rule 6: Check for unmatched items
-    if unmatched_items:
-        unmatched_descriptions = [item.description for item in unmatched_items]
-        errors.append("Unmatched items found in invoice")
-        return ValidationResult(
-            approved=False, 
-            reason="Unmatched items present", 
-            manual_review=True,
-            details=f"Unmatched items: {', '.join(unmatched_descriptions)}",
-            errors=errors,
-            warnings=warnings
-        )
-    
-    # Rule 7: If there are any errors, require manual review
-    if errors:
-        return ValidationResult(
-            approved=False, 
-            reason="Validation errors found", 
-            manual_review=True,
-            errors=errors,
-            warnings=warnings
-        )
-    
-    # All validations passed
-    return ValidationResult(
-        approved=True, 
-        reason="Invoice matches PO", 
-        manual_review=False,
-        warnings=warnings
-    )
+    """Legacy function for backward compatibility"""
+    validator = InvoiceValidator()
+    return validator.validate(invoice, po)

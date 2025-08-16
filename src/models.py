@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
 class Item(BaseModel):
@@ -50,7 +50,10 @@ class Invoice(BaseModel):
 
 class ValidationResult(BaseModel):
     """Result of invoice validation"""
-    approved: bool
+    # model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
+
+    # approved: bool = Field(alias="is_approved")
+    is_approved: bool
     reason: Optional[str] = None
     manual_review: bool = False
     details: Optional[str] = None
