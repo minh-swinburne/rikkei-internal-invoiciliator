@@ -25,14 +25,16 @@ class Settings(BaseSettings):
         default="anthropic/claude-3.5-sonnet:beta",
         description="Model identifier for LLM provider"
     )
+    llm_max_retries: int = Field(default=3, description="Maximum retry attempts for API calls")
+    llm_timeout_sec: int = Field(default=60, description="API timeout in seconds")
     
     # Application Configuration
     log_level: str = Field(default="INFO", description="Logging level")
-    max_retries: int = Field(default=3, description="Maximum retry attempts for API calls")
-    timeout_seconds: int = Field(default=60, description="API timeout in seconds")
-    
+    max_file_size_mb: int = Field(default=10, description="Maximum file size in MB")
+    concurrent_processing: bool = Field(default=True, description="Enable concurrent processing")
+
     # PDF Processing
-    enable_pdf_stamping: bool = Field(default=True, description="Enable PDF approval stamping")
+    enable_stamping: bool = Field(default=True, description="Enable PDF approval stamping")
     stamp_position: str = Field(default="bottom-right", description="Position for PDF stamps")
     
     model_config = {

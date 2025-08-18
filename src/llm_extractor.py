@@ -4,8 +4,7 @@ Uses provider-agnostic configuration with structured output support.
 """
 
 import json
-import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 from openai import OpenAI
 from pydantic import ValidationError
@@ -28,8 +27,8 @@ class LLMExtractor:
             base_url=settings.llm_base_url
         )
         self.model = settings.llm_model
-        self.max_retries = settings.max_retries
-        self.timeout = settings.timeout_seconds
+        self.max_retries = settings.llm_max_retries
+        self.timeout = settings.llm_timeout_sec
         
         self.logger.info(f"LLM Extractor initialized with model: {self.model}")
         self.logger.info(f"Base URL: {settings.llm_base_url}")
@@ -38,7 +37,11 @@ class LLMExtractor:
     def extract_invoice_data(self, text: str) -> tuple[Invoice | None, PurchaseOrder | None]:
         """Extract invoice and PO data using structured outputs with fallback"""
         self.logger.debug(f"Starting extraction for text length: {len(text)} characters")
-        
+
+        # DEBUG: Return empty results (for debugging only)
+        self.logger.debug(f"Returning empty results for debugging...")
+        return None, None
+
         # Get raw data from LLM
         raw_data = self._extract_raw_data(text)
         if not raw_data:
@@ -62,7 +65,7 @@ class LLMExtractor:
             self.logger.error(f"Failed to create Pydantic models: {str(e)}")
             return None, None
     
-    def _extract_raw_data(self, text: str) -> Dict[str, Any] | None:
+    def _extract_raw_data(self, text: str) -> dict[str, Any] | None:
         
         system_prompt = """You are an expert at extracting structured invoice and purchase order data from merged PDF text.
         

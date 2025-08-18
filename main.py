@@ -211,7 +211,7 @@ def main():
     logger.info("=== Invoice Reconciliation Tool Started ===")
     logger.info(f"Using LLM Model: {settings.llm_model}")
     logger.info(f"LLM Provider URL: {settings.llm_base_url}")
-    logger.info(f"PDF Stamping: {'Enabled' if settings.enable_pdf_stamping else 'Disabled'}")
+    logger.info(f"PDF Stamping: {'Enabled' if settings.enable_stamping else 'Disabled'}")
     
     try:
         if args.pdf_file:

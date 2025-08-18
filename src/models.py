@@ -54,8 +54,6 @@ class ValidationResult(BaseModel):
 
     # approved: bool = Field(alias="is_approved")
     is_approved: bool
-    reason: Optional[str] = None
-    manual_review: bool = False
-    details: Optional[str] = None
-    warnings: list[str] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    total_invoice_amount: float = 0.0
+    total_po_amount: float = 0.0

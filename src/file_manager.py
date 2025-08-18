@@ -39,7 +39,7 @@ class FileManager:
         Returns:
             Path to the stamped file in the output directory
         """
-        if not settings.enable_pdf_stamping:
+        if not settings.enable_stamping:
             self.logger.info("PDF stamping disabled in settings")
             return self._copy_without_stamping(pdf_path, status)
         
