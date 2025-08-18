@@ -2,8 +2,6 @@
 Business rule validation for invoice and purchase order reconciliation.
 """
 
-from typing import List
-
 from .models import Invoice, PurchaseOrder, ValidationResult
 from .logging_config import get_module_logger
 
@@ -28,7 +26,8 @@ class InvoiceValidator:
         """
         self.logger.info(f"Validating invoice {invoice.invoice_number} against PO {purchase_order.po_number}")
         
-        issues: List[str] = []
+        issues: list[str] = []
+        notes: list[str] = []
         
         # Rule 1: PO numbers must match
         if invoice.po_number != purchase_order.po_number:
@@ -41,28 +40,32 @@ class InvoiceValidator:
         
         for sku, invoice_item in invoice_items.items():
             if sku not in po_items:
-                issues.append(f"Item {sku} in invoice but not in PO")
-                self.logger.warning(f"Item {sku} in invoice but not in PO")
+                message = f"Item {sku} in invoice but not in PO"
+                issues.append(message)
+                self.logger.warning(message)
                 continue
             
             po_item = po_items[sku]
             
             # Rule 3: Unit prices must match
             if invoice_item.unit_price != po_item.unit_price:
-                issues.append(f"Unit price mismatch for {sku}: Invoice ${invoice_item.unit_price} vs PO ${po_item.unit_price}")
-                self.logger.warning(f"Unit price mismatch for {sku}: ${invoice_item.unit_price} vs ${po_item.unit_price}")
-            
+                message = f"Unit price mismatch for {sku}: Invoice ${invoice_item.unit_price} vs PO ${po_item.unit_price}"
+                issues.append(message)
+                self.logger.warning(message)
+
             # Rule 4: Partial deliveries are acceptable (shipped <= ordered)
             if invoice_item.quantity_shipped and invoice_item.quantity_shipped > po_item.quantity_ordered:
-                issues.append(f"Over-shipment for {sku}: Shipped {invoice_item.quantity_shipped} vs Ordered {po_item.quantity_ordered}")
-                self.logger.warning(f"Over-shipment for {sku}: {invoice_item.quantity_shipped} vs {po_item.quantity_ordered}")
-        
+                message = f"Over-shipment for {sku}: Shipped {invoice_item.quantity_shipped} vs Ordered {po_item.quantity_ordered}"
+                issues.append(message)
+                self.logger.warning(message)
+
         # Rule 5: Check for items in PO but not in invoice (informational)
         for sku in po_items:
-            if sku not in invoice_items:
-                issues.append(f"Item {sku} in PO but not delivered in invoice (partial delivery)")
-                self.logger.info(f"Partial delivery: Item {sku} in PO but not in invoice")
-        
+            if sku is not None and sku not in invoice_items:
+                message = f"Item {sku} in PO but not delivered in invoice (partial delivery)"
+                notes.append(message)
+                self.logger.info(message)
+
         # Rule 6: Check for missing critical identifiers
         if not invoice.invoice_number:
             issues.append("Missing invoice number")
@@ -72,6 +75,10 @@ class InvoiceValidator:
             issues.append("Missing PO number")
             self.logger.error("Missing PO number")
         
+        if invoice.vendor:
+            notes.append(f"Invoice vendor: {invoice.vendor}")
+            self.logger.info(f"Invoice vendor: {invoice.vendor}")
+
         # Rule 7: Detect credit memos (require manual review)
         if any("credit" in str(item.description).lower() for item in invoice.items if item.description):
             issues.append("Credit memo detected - requires manual review")
@@ -80,6 +87,7 @@ class InvoiceValidator:
         result = ValidationResult(
             is_approved=len(issues) == 0,
             issues=issues,
+            notes=notes,
             total_invoice_amount=sum(
                 (item.quantity_shipped or 0) * item.unit_price 
                 for item in invoice.items 

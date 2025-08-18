@@ -19,8 +19,7 @@ from src.models import Invoice, PurchaseOrder
 
 def process_single_pdf(
     pdf_path: str,
-    vendor: Optional[str] = None,
-    output_dir: str = "data/output"
+    output_dir: Path = Path("data/output")
 ) -> bool:
     """
     Process a single PDF file for invoice reconciliation.
@@ -78,7 +77,7 @@ def process_single_pdf(
         
         # Stamp and file the PDF
         logger.info(f"Processing PDF with status: {status}")
-        final_path = file_manager.stamp_pdf(pdf_path, status)
+        final_path = file_manager.stamp_pdf(pdf_path, status, pic_name="Admin")
         
         logger.info(f"Successfully processed PDF: {final_path}")
         return True
@@ -88,75 +87,42 @@ def process_single_pdf(
         return False
 
 
-def process_vendor_directory(
-    vendor: str,
-    input_dir: str = "data/input",
-    output_dir: str = "data/output"
+def process_directory(
+    input_dir: Path = Path("data/input"),
+    output_dir: Path = Path("data/output")
 ) -> None:
     """
-    Process all PDF files in a vendor-specific directory.
+    Process all PDF files in a specific directory.
     
     Args:
-        vendor: Vendor identifier (subdirectory name)
         input_dir: Base input directory
         output_dir: Output directory for processed files
     """
     logger = get_module_logger('main')
-    vendor_dir = Path(input_dir) / vendor
     
-    if not vendor_dir.exists():
-        logger.error(f"Vendor directory does not exist: {vendor_dir}")
+    if not input_dir.exists():
+        logger.error(f"Input directory does not exist: {input_dir}")
         return
-    
-    pdf_files = list(vendor_dir.glob("*.pdf"))
+
+    pdf_files = list(input_dir.glob("*.pdf"))
     if not pdf_files:
-        logger.warning(f"No PDF files found in {vendor_dir}")
-        return
+        logger.warning(f"No PDF files found in {input_dir}. Trying to search for all PDF files in sub-directories...")
+        pdf_files = list(input_dir.rglob("*.pdf"))
+        if not pdf_files:
+            logger.warning(f"No PDF files found in any sub-directories of {input_dir}")
+            return
     
-    logger.info(f"Processing {len(pdf_files)} PDF files for vendor: {vendor}")
+    logger.info(f"Processing {len(pdf_files)} PDF files in directory: {input_dir}")
     
     success_count = 0
     for pdf_file in pdf_files:
         logger.info(f"Processing file {pdf_file.name}")
-        if process_single_pdf(str(pdf_file), vendor, output_dir):
+        if process_single_pdf(str(pdf_file), output_dir):
             success_count += 1
         else:
             logger.error(f"Failed to process {pdf_file.name}")
     
-    logger.info(f"Processed {success_count}/{len(pdf_files)} files successfully for vendor {vendor}")
-
-
-def process_all_vendors(
-    input_dir: str = "data/input",
-    output_dir: str = "data/output"
-) -> None:
-    """
-    Process PDF files for all vendors.
-    
-    Args:
-        input_dir: Base input directory
-        output_dir: Output directory for processed files
-    """
-    logger = get_module_logger('main')
-    input_path = Path(input_dir)
-    
-    if not input_path.exists():
-        logger.error(f"Input directory does not exist: {input_dir}")
-        return
-    
-    # Find all vendor subdirectories
-    vendor_dirs = [d for d in input_path.iterdir() if d.is_dir()]
-    
-    if not vendor_dirs:
-        logger.warning(f"No vendor directories found in {input_dir}")
-        return
-    
-    logger.info(f"Found {len(vendor_dirs)} vendor directories")
-    
-    for vendor_dir in vendor_dirs:
-        vendor_name = vendor_dir.name
-        logger.info(f"Processing vendor directory: {vendor_name}")
-        process_vendor_directory(vendor_name, input_dir, output_dir)
+    logger.info(f"Processed {success_count}/{len(pdf_files)} files successfully.")
 
 
 def main():
@@ -214,25 +180,28 @@ def main():
     logger.info(f"PDF Stamping: {'Enabled' if settings.enable_stamping else 'Disabled'}")
     
     try:
+        input_dir = Path(args.input_dir)
+        output_dir = Path(args.output_dir)
+
         if args.pdf_file:
             # Process single file
             logger.info(f"Processing single PDF file: {args.pdf_file}")
-            success = process_single_pdf(args.pdf_file, args.vendor, args.output_dir)
+            success = process_single_pdf(args.pdf_file, output_dir)
             if success:
                 logger.info("PDF processing completed successfully")
             else:
                 logger.error("PDF processing failed")
                 sys.exit(1)
                 
-        elif args.vendor:
-            # Process specific vendor
-            logger.info(f"Processing vendor: {args.vendor}")
-            process_vendor_directory(args.vendor, args.input_dir, args.output_dir)
-            
         else:
-            # Process all vendors
-            logger.info("Processing all vendors")
-            process_all_vendors(args.input_dir, args.output_dir)
+            # Process directory of PDF files
+            logger.info(f"Processing directory: {input_dir}")
+            process_directory(input_dir, output_dir)
+
+        # else:
+        #     # Process all vendors
+        #     logger.info("Processing all vendors")
+        #     process_all_vendors(args.input_dir, args.output_dir)
             
     except KeyboardInterrupt:
         logger.info("Processing interrupted by user")

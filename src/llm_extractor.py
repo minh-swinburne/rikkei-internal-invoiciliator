@@ -39,8 +39,8 @@ class LLMExtractor:
         self.logger.debug(f"Starting extraction for text length: {len(text)} characters")
 
         # DEBUG: Return empty results (for debugging only)
-        self.logger.debug(f"Returning empty results for debugging...")
-        return None, None
+        # self.logger.debug(f"Returning empty results for debugging...")
+        # return None, None
 
         # Get raw data from LLM
         raw_data = self._extract_raw_data(text)
@@ -54,11 +54,10 @@ class LLMExtractor:
             
             # Create Invoice object
             invoice = Invoice(**invoice_data)
-            
             # Create PurchaseOrder object  
             purchase_order = PurchaseOrder(**po_data)
             
-            self.logger.info(f"Successfully created Invoice {invoice.invoice_number} and PO {purchase_order.po_number}")
+            self.logger.info(f"✅ Successfully created Invoice {invoice.invoice_number} and PO {purchase_order.po_number}")
             return invoice, purchase_order
             
         except ValidationError as e:
@@ -68,11 +67,11 @@ class LLMExtractor:
     def _extract_raw_data(self, text: str) -> dict[str, Any] | None:
         
         system_prompt = """You are an expert at extracting structured invoice and purchase order data from merged PDF text.
-        
-        Extract invoice and PO information from the provided text. The text may contain both an invoice and a purchase order.
-        
+
+        Extract invoice and PO information from the provided text. The text contain both an invoice and a purchase order. The invoice will always come first, and may consist of multiple pages, followed by the purchase order.
+
         For items in invoices: include both quantity_ordered and quantity_shipped (may be different for partial shipments)
-        For items in purchase orders: only include quantity_ordered (quantity_shipped should be null)
+        For items in purchase orders: only include quantity_ordered (quantity_shipped should not be included)
         
         Return valid JSON with the specified schema."""
         
@@ -90,18 +89,43 @@ class LLMExtractor:
                             "properties": {
                                 "invoice_number": {"type": "string"},
                                 "po_number": {"type": "string"},
+                                "vendor": {
+                                    "type": "string",
+                                    "description": "The name of the vendor, e.g. Ingram, TD SYNNEX, Scansource..."
+                                },
                                 "items": {
                                     "type": "array",
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "sku": {"type": ["string", "null"]},
-                                            "vpn": {"type": ["string", "null"]},
-                                            "description": {"type": "string"},
-                                            "unit_price": {"type": "number"},
-                                            "quantity_ordered": {"type": "integer"},
-                                            "quantity_shipped": {"type": ["integer", "null"]},
-                                            "total": {"type": "number"}
+                                            "sku": {
+                                                "type": ["string", "null"],
+                                                "description": "Stock Keeping Unit (SKU). If not found, try finding item number and consider it as SKU. Sometimes it may be mixed into the description."
+                                            },
+                                            "vpn": {
+                                                "type": ["string", "null"],
+                                                "description": "Vendor Part Number (VPN). Sometimes it may be mixed into the description."
+                                            },
+                                            "description": {
+                                                "type": "string",
+                                                "description": "Item description."
+                                            },
+                                            "unit_price": {
+                                                "type": "number",
+                                                "description": "Price per unit"
+                                            },
+                                            "quantity_ordered": {
+                                                "type": "integer",
+                                                "description": "Number of units ordered"
+                                            },
+                                            "quantity_shipped": {
+                                                "type": "integer",
+                                                "description": "Number of units shipped. If not provided, defaults to ordered quantity."
+                                            },
+                                            "total": {
+                                                "type": "number", 
+                                                "description": "Total price for the item"
+                                            }
                                         },
                                         "required": ["description", "unit_price", "quantity_ordered", "total"],
                                         "additionalProperties": False
@@ -125,13 +149,30 @@ class LLMExtractor:
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "sku": {"type": ["string", "null"]},
-                                            "vpn": {"type": ["string", "null"]},
-                                            "description": {"type": "string"},
-                                            "unit_price": {"type": "number"},
-                                            "quantity_ordered": {"type": "integer"},
-                                            "quantity_shipped": {"type": ["integer", "null"]},
-                                            "total": {"type": "number"}
+                                            "sku": {
+                                                "type": ["string", "null"],
+                                                "description": "Stock Keeping Unit (SKU). If not found, try finding item number and consider it as SKU. Sometimes it may be mixed into the description."
+                                            },
+                                            "vpn": {
+                                                "type": ["string", "null"],
+                                                "description": "Vendor Part Number (VPN). Sometimes it may be mixed into the description."
+                                            },
+                                            "description": {
+                                                "type": "string",
+                                                "description": "Description of the item."
+                                            },
+                                            "unit_price": {
+                                                "type": "number",
+                                                "description": "Unit price of the item."
+                                            },
+                                            "quantity_ordered": {
+                                                "type": "integer",
+                                                "description": "Quantity ordered."
+                                            },
+                                            "total": {
+                                                "type": "number",
+                                                "description": "Total price of the item."
+                                            }
                                         },
                                         "required": ["description", "unit_price", "quantity_ordered", "total"],
                                         "additionalProperties": False
@@ -181,7 +222,7 @@ class LLMExtractor:
             self.logger.debug("Falling back to plain text mode...")
             
             fallback_prompt = system_prompt + "\n\n" + \
-                "You MUST return a JSON object following this exact schema (with NO code block wrappers like ```json):\n" + \
+                "You MUST return a JSON object following this exact schema (with NO code block wrappers):\n" + \
                 json.dumps(response_format["json_schema"]["schema"], indent=2) + "\n\n" + \
                 "Return ONLY the JSON object, no additional text or formatting."
             

@@ -50,7 +50,7 @@ class PDFProcessor:
             text = ""
             for page_num, page in enumerate(self.doc):
                 page_text = page.get_text()
-                text += page_text + "\n"
+                text += f"## Page {page_num + 1}:\n{page_text}\n\n---\n\n"
                 self.logger.debug(f"Extracted {len(page_text)} characters from page {page_num + 1}")
             
             self.logger.info(f"Extracted {len(text)} total characters from PDF: {self.pdf_path}")

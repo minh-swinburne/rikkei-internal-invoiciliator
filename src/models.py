@@ -37,6 +37,7 @@ class Invoice(BaseModel):
     """Invoice model"""
     invoice_number: str
     po_number: str
+    vendor: str
     items: list[Item]
     extra_fees: dict[str, float] = Field(default_factory=dict)
     is_credit_memo: bool = False
@@ -55,5 +56,6 @@ class ValidationResult(BaseModel):
     # approved: bool = Field(alias="is_approved")
     is_approved: bool
     issues: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list, description="Additional notes or comments")
     total_invoice_amount: float = 0.0
     total_po_amount: float = 0.0

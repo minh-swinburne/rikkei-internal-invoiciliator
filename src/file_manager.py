@@ -5,8 +5,10 @@ Handles PDF stamping and file organization.
 
 import shutil
 from pathlib import Path
+from datetime import datetime
 
-import fitz  # PyMuPDF
+import pymupdf  # PyMuPDF
+from pymupdf import Rect
 
 from .settings import settings
 from .logging_config import get_module_logger
@@ -15,10 +17,10 @@ from .logging_config import get_module_logger
 class FileManager:
     """Handles file operations for processed invoices."""
     
-    def __init__(self, output_dir: str = "data/output"):
+    def __init__(self, output_dir: Path = Path("data/output")):
         """Initialize file manager with output directory."""
         self.logger = get_module_logger('file_manager')
-        self.output_dir = Path(output_dir)
+        self.output_dir = output_dir
         self.approved_dir = self.output_dir / "approved"
         self.review_dir = self.output_dir / "review"
         
@@ -28,7 +30,7 @@ class FileManager:
         
         self.logger.info(f"FileManager initialized with output directory: {self.output_dir}")
     
-    def stamp_pdf(self, pdf_path: str, status: str) -> Path:
+    def stamp_pdf(self, pdf_path: str, status: str, pic_name: str) -> Path:
         """
         Stamp PDF with approval status and move to appropriate directory.
         
@@ -51,35 +53,59 @@ class FileManager:
         
         try:
             # Open the PDF
-            doc = fitz.open(pdf_path)
+            doc = pymupdf.open(pdf_path)
             
             # Add stamp to first page
             page = doc[0]
             rect = page.rect
+            width = 200
+            height = 50
             
             # Position stamp based on settings
             if settings.stamp_position == "top-right":
-                stamp_rect = fitz.Rect(rect.width - 150, 20, rect.width - 20, 60)
+                stamp_rect = Rect(rect.width - width - 20, 20, rect.width - 20, height + 20)
             elif settings.stamp_position == "top-left":
-                stamp_rect = fitz.Rect(20, 20, 150, 60)
+                stamp_rect = Rect(20, 20, width, height)
             elif settings.stamp_position == "bottom-left":
-                stamp_rect = fitz.Rect(20, rect.height - 60, 150, rect.height - 20)
+                stamp_rect = Rect(20, rect.height - height, width, rect.height - 20)
             else:  # bottom-right (default)
-                stamp_rect = fitz.Rect(rect.width - 150, rect.height - 60, rect.width - 20, rect.height - 20)
-            
+                stamp_rect = Rect(rect.width - width - 20, rect.height - height - 20, rect.width - 20, rect.height - 20)
+
             # Set stamp color based on status
-            color = (0, 0.7, 0) if status == "APPROVED" else (0.8, 0, 0)  # Green for approved, red for review
-            
+            color = "#416a1c" if status == "APPROVED" else "#ff0000"  # Green for approved, red for review
+            bg_color = "#e4eedd" if status == "APPROVED" else "#f8d7da"  # Light background
+            today = datetime.today().date()
+            label = f"<h3>{status}</h3><p>By {pic_name} on {today}</p>"
+            css = f"""
+body {{
+    background-color: {bg_color};
+    border: 2px solid {color};
+    border-radius: 8px;
+}}
+
+* {{
+    color: {color};
+    font-family: system-ui;
+    text-align: left;
+}}
+
+h3 {{
+    font-size: 16px;
+    margin-bottom: 10px;
+}}
+
+p {{
+    font-size: 13px;
+    font-style: italic;
+    margin-bottom: 0;
+}}
+"""
+
             # Add the stamp
-            page.insert_textbox(
+            page.insert_htmlbox(
                 stamp_rect,
-                status,
-                fontsize=12,
-                fontname="helv",
-                color=color,
-                fill=(1, 1, 1),  # White background
-                border_width=2,
-                align=1  # Center align
+                label,
+                css=css
             )
             
             # Save stamped PDF
