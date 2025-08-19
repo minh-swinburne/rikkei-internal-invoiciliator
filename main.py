@@ -8,40 +8,56 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from src.utils import get_timestamp
 from src.logging_config import setup_logging, get_module_logger
 from src.settings import settings
 from src.pdf_processor import PDFProcessor
 from src.llm_extractor import LLMExtractor
 from src.validator import InvoiceValidator
 from src.file_manager import FileManager
-from src.models import Invoice, PurchaseOrder
 
 
-def process_single_pdf(
-    pdf_path: str,
-    output_dir: Path = Path("data/output")
-) -> bool:
+# Global service instances - initialized once and reused
+pdf_processor: Optional[PDFProcessor] = None
+llm_extractor: Optional[LLMExtractor] = None
+validator: Optional[InvoiceValidator] = None
+file_manager: Optional[FileManager] = None
+
+
+def initialize_services(output_dir: Path) -> None:
+    """Initialize global service instances."""
+    global pdf_processor, llm_extractor, validator, file_manager
+    
+    logger = get_module_logger('main')
+    logger.info("Initializing global services...")
+    
+    pdf_processor = PDFProcessor()
+    llm_extractor = LLMExtractor()
+    validator = InvoiceValidator()
+    file_manager = FileManager(output_dir)
+    
+    logger.info("Global services initialized successfully")
+
+
+def process_single_pdf(pdf_path: Path) -> bool:
     """
     Process a single PDF file for invoice reconciliation.
     
     Args:
         pdf_path: Path to the PDF file to process
-        vendor: Optional vendor identifier
-        output_dir: Output directory for processed files
         
     Returns:
         True if processing succeeded, False otherwise
     """
     logger = get_module_logger('main')
-    logger.info(f"Processing PDF: {pdf_path}")
+    logger.info(f"Processing PDF: {pdf_path.name}")
+    
+    # Ensure services are initialized
+    if not all([pdf_processor, llm_extractor, validator, file_manager]):
+        logger.error("Services not initialized - call initialize_services() first")
+        return False
     
     try:
-        # Initialize processors
-        pdf_processor = PDFProcessor()
-        llm_extractor = LLMExtractor()
-        validator = InvoiceValidator()
-        file_manager = FileManager(output_dir)
-        
         # Extract text from PDF
         logger.info("Extracting text from PDF")
         text = pdf_processor.extract_text(pdf_path)
@@ -75,11 +91,20 @@ def process_single_pdf(
             for issue in validation_result.issues:
                 logger.info(f"  - {issue}")
         
-        # Stamp and file the PDF
+        # Override status if configured to always accept
+        if settings.stamp_always_accept:
+            status = "APPROVED"
+        
+        # Process and save the PDF (stamping and/or copying)
         logger.info(f"Processing PDF with status: {status}")
-        final_path = file_manager.stamp_pdf(pdf_path, status, pic_name="Admin")
+        final_path = file_manager.process_pdf(pdf_path, status)
+        
+        # Save extraction and validation results
+        result_path = file_manager.save_result(invoice, purchase_order, validation_result, pdf_path)
         
         logger.info(f"Successfully processed PDF: {final_path}")
+        logger.info(f"Results saved to: {result_path}")
+
         return True
         
     except Exception as e:
@@ -88,15 +113,13 @@ def process_single_pdf(
 
 
 def process_directory(
-    input_dir: Path = Path("data/input"),
-    output_dir: Path = Path("data/output")
+    input_dir: Path = Path("data/input")
 ) -> None:
     """
     Process all PDF files in a specific directory.
     
     Args:
         input_dir: Base input directory
-        output_dir: Output directory for processed files
     """
     logger = get_module_logger('main')
     
@@ -117,7 +140,7 @@ def process_directory(
     success_count = 0
     for pdf_file in pdf_files:
         logger.info(f"Processing file {pdf_file.name}")
-        if process_single_pdf(str(pdf_file), output_dir):
+        if process_single_pdf(pdf_file):
             success_count += 1
         else:
             logger.error(f"Failed to process {pdf_file.name}")
@@ -129,12 +152,6 @@ def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Invoice Reconciliation Tool - Process invoices and purchase orders"
-    )
-    
-    parser.add_argument(
-        "--vendor",
-        type=str,
-        help="Specific vendor to process (e.g., 'ingram', 'td-synnex')"
     )
     
     parser.add_argument(
@@ -152,21 +169,54 @@ def main():
     )
     
     parser.add_argument(
+        "--pdf-file",
+        type=str,
+        help="Process a single PDF file instead of directories"
+    )
+    
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging level (default: INFO)"
     )
-    
+
     parser.add_argument(
-        "--pdf-file",
-        type=str,
-        help="Process a single PDF file instead of directories"
+        "--stamp",
+        action="store_true",
+        help="Enable PDF stamping"
     )
-    
+
+    parser.add_argument(
+        "--stamp-pic-name",
+        type=str,
+        default="Jane Smith",
+        help="Name of the person to include in the stamp (default: Jane Smith)"
+    )
+
+    parser.add_argument(
+        "--stamp-always-accept",
+        action="store_true",
+        help="Always stamp invoices as accepted"
+    )
+
+    parser.add_argument(
+        "--stamp-position",
+        type=str,
+        default="bottom-right",
+        choices=["top-left", "top-right", "bottom-left", "bottom-right"],
+        help="Position of the stamp on the PDF (default: bottom-right)"
+    )
+
     args = parser.parse_args()
-    
+
+    # Update settings based on CLI arguments
+    settings.enable_stamping = args.stamp
+    settings.stamp_pic_name = args.stamp_pic_name
+    settings.stamp_always_accept = args.stamp_always_accept
+    settings.stamp_position = args.stamp_position
+
     # Set up logging
     logger = setup_logging(
         log_level=args.log_level,
@@ -181,12 +231,17 @@ def main():
     
     try:
         input_dir = Path(args.input_dir)
-        output_dir = Path(args.output_dir)
+        output_dir = Path(args.output_dir) / get_timestamp()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize global services
+        initialize_services(output_dir)
 
         if args.pdf_file:
             # Process single file
-            logger.info(f"Processing single PDF file: {args.pdf_file}")
-            success = process_single_pdf(args.pdf_file, output_dir)
+            pdf_file = Path(args.pdf_file)
+            logger.info(f"Processing single PDF file: {pdf_file}")
+            success = process_single_pdf(pdf_file)
             if success:
                 logger.info("PDF processing completed successfully")
             else:
@@ -196,7 +251,7 @@ def main():
         else:
             # Process directory of PDF files
             logger.info(f"Processing directory: {input_dir}")
-            process_directory(input_dir, output_dir)
+            process_directory(input_dir)
 
         # else:
         #     # Process all vendors

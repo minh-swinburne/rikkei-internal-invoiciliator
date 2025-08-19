@@ -34,7 +34,7 @@ class LLMExtractor:
         self.logger.info(f"Base URL: {settings.llm_base_url}")
         self.logger.info(f"API Key present: {'Yes' if settings.llm_api_key else 'No'}")
 
-    def extract_invoice_data(self, text: str) -> tuple[Invoice | None, PurchaseOrder | None]:
+    def extract_invoice_data(self, text: str) -> tuple[Optional[Invoice], Optional[PurchaseOrder]]:
         """Extract invoice and PO data using structured outputs with fallback"""
         self.logger.debug(f"Starting extraction for text length: {len(text)} characters")
 
@@ -63,9 +63,9 @@ class LLMExtractor:
         except ValidationError as e:
             self.logger.error(f"Failed to create Pydantic models: {str(e)}")
             return None, None
-    
-    def _extract_raw_data(self, text: str) -> dict[str, Any] | None:
-        
+
+    def _extract_raw_data(self, text: str) -> Optional[dict[str, Any]]:
+
         system_prompt = """You are an expert at extracting structured invoice and purchase order data from merged PDF text.
 
         Extract invoice and PO information from the provided text. The text contain both an invoice and a purchase order. The invoice will always come first, and may consist of multiple pages, followed by the purchase order.
@@ -97,6 +97,7 @@ class LLMExtractor:
                                     "type": "array",
                                     "items": {
                                         "type": "object",
+                                        "description": "This schema defines an item in the invoice. Sometimes, it is not an actual product but a fee (e.g., shipping fee)",
                                         "properties": {
                                             "sku": {
                                                 "type": ["string", "null"],
@@ -105,6 +106,10 @@ class LLMExtractor:
                                             "vpn": {
                                                 "type": ["string", "null"],
                                                 "description": "Vendor Part Number (VPN). Sometimes it may be mixed into the description."
+                                            },
+                                            "is_fee": {
+                                                "type": "boolean",
+                                                "description": "Indicates if the item is a fee (e.g., shipping fee), false if it is a product."
                                             },
                                             "description": {
                                                 "type": "string",
@@ -156,6 +161,10 @@ class LLMExtractor:
                                             "vpn": {
                                                 "type": ["string", "null"],
                                                 "description": "Vendor Part Number (VPN). Sometimes it may be mixed into the description."
+                                            },
+                                            "is_fee": {
+                                                "type": "boolean",
+                                                "description": "Indicates if the item is a fee (e.g., shipping fee), false if it is a product."
                                             },
                                             "description": {
                                                 "type": "string",

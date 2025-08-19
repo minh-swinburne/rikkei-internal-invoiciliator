@@ -36,9 +36,22 @@ class InvoiceValidator:
         
         # Rule 2: Validate items
         invoice_items = {item.sku: item for item in invoice.items if item.sku}
+        invoice_no_sku = [item for item in invoice.items if not item.sku]
+
         po_items = {item.sku: item for item in purchase_order.items if item.sku}
-        
+        po_no_sku = [item for item in purchase_order.items if not item.sku]
+
+        # Check invoice items with SKU
         for sku, invoice_item in invoice_items.items():
+            if invoice_item.is_fee:
+                message = f"Item \"{invoice_item.description}\" is a fee, skipped"
+                notes.append(message)
+                self.logger.info(message)
+                # Add item to extra fees and remove from list
+                invoice.extra_fees[invoice_item.description] = invoice_item.total
+                invoice.items.remove(invoice_item)
+                continue
+
             if sku not in po_items:
                 message = f"Item {sku} in invoice but not in PO"
                 issues.append(message)
@@ -46,7 +59,7 @@ class InvoiceValidator:
                 continue
             
             po_item = po_items[sku]
-            
+                        
             # Rule 3: Unit prices must match
             if invoice_item.unit_price != po_item.unit_price:
                 message = f"Unit price mismatch for {sku}: Invoice ${invoice_item.unit_price} vs PO ${po_item.unit_price}"
@@ -58,10 +71,25 @@ class InvoiceValidator:
                 message = f"Over-shipment for {sku}: Shipped {invoice_item.quantity_shipped} vs Ordered {po_item.quantity_ordered}"
                 issues.append(message)
                 self.logger.warning(message)
+        
+        # Check invoice items with no SKU
+        for item in invoice_no_sku:
+            if item.is_fee:
+                message = f"Item \"{item.description}\" is a fee, skipped"
+                notes.append(message)
+                self.logger.info(message)
+                # Add item to extra fees and remove from list
+                invoice.extra_fees[item.description] = item.total
+                invoice.items.remove(item)
+                continue
+
+            message = f"Item with no SKU in invoice: {item.description}"
+            issues.append(message)
+            self.logger.warning(message)
 
         # Rule 5: Check for items in PO but not in invoice (informational)
         for sku in po_items:
-            if sku is not None and sku not in invoice_items:
+            if sku not in invoice_items:
                 message = f"Item {sku} in PO but not delivered in invoice (partial delivery)"
                 notes.append(message)
                 self.logger.info(message)
@@ -76,7 +104,6 @@ class InvoiceValidator:
             self.logger.error("Missing PO number")
         
         if invoice.vendor:
-            notes.append(f"Invoice vendor: {invoice.vendor}")
             self.logger.info(f"Invoice vendor: {invoice.vendor}")
 
         # Rule 7: Detect credit memos (require manual review)
@@ -86,6 +113,7 @@ class InvoiceValidator:
         
         result = ValidationResult(
             is_approved=len(issues) == 0,
+            vendor=invoice.vendor,
             issues=issues,
             notes=notes,
             total_invoice_amount=sum(

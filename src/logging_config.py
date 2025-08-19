@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from .utils import get_timestamp
+
 
 def setup_logging(
     log_level: str = "INFO",
@@ -37,7 +39,7 @@ def setup_logging(
     
     # Generate default log file name if not provided
     if log_file is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_timestamp()
         if is_test:
             log_file = logs_dir / f"test_{timestamp}.log"
         else:

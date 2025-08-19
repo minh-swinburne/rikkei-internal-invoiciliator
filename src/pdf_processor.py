@@ -2,6 +2,7 @@
 PDF processing for the invoice reconciliation tool.
 """
 
+from pathlib import Path
 import pymupdf  # PyMuPDF
 
 from .logging_config import get_module_logger
@@ -16,9 +17,11 @@ class PDFProcessor:
         self.pdf_path = None
         self.doc = None
 
-    def load(self, pdf_path: str) -> bool:
+    def load(self, pdf_path: str | Path) -> bool:
         """Load a PDF file"""
         try:
+            if isinstance(pdf_path, str):
+                pdf_path = Path(pdf_path)
             self.pdf_path = pdf_path
             self.doc = pymupdf.open(self.pdf_path)
             self.logger.info(f"Loaded PDF: {self.pdf_path}")
@@ -27,7 +30,7 @@ class PDFProcessor:
             self.logger.error(f"Failed to load PDF {pdf_path}: {e}")
             return False
 
-    def extract_text(self, pdf_path: str = None) -> str:
+    def extract_text(self, pdf_path: str | Path = None) -> str:
         """
         Extract text from a PDF file.
         
@@ -54,6 +57,10 @@ class PDFProcessor:
                 self.logger.debug(f"Extracted {len(page_text)} characters from page {page_num + 1}")
             
             self.logger.info(f"Extracted {len(text)} total characters from PDF: {self.pdf_path}")
+            
+            # Close the document after extraction to free memory
+            self.close()
+            
             return text.strip()
         except Exception as e:
             self.logger.error(f"Failed to extract text from PDF: {e}")

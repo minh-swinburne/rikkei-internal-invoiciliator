@@ -3,15 +3,24 @@ File management for the invoice reconciliation tool.
 Handles PDF stamping and file organization.
 """
 
+import json
 import shutil
+from typing import Optional, Union
 from pathlib import Path
 from datetime import datetime
 
 import pymupdf  # PyMuPDF
 from pymupdf import Rect
 
+from .models import Invoice, PurchaseOrder, ValidationResult
 from .settings import settings
 from .logging_config import get_module_logger
+
+
+def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    """Convert hex color to RGB tuple."""
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
 class FileManager:
@@ -30,9 +39,28 @@ class FileManager:
         
         self.logger.info(f"FileManager initialized with output directory: {self.output_dir}")
     
-    def stamp_pdf(self, pdf_path: str, status: str, pic_name: str) -> Path:
+    def process_pdf(self, pdf_path: str | Path, status: str) -> Path:
         """
-        Stamp PDF with approval status and move to appropriate directory.
+        Process PDF: either stamp and save, or just copy to appropriate directory.
+        
+        Args:
+            pdf_path: Path to the original PDF file
+            status: Processing status ("APPROVED" or "REQUIRES REVIEW")
+            
+        Returns:
+            Path to the processed file in the output directory
+        """
+        if isinstance(pdf_path, str):
+            pdf_path = Path(pdf_path)
+        
+        if settings.enable_stamping:
+            return self._stamp_and_save_pdf(pdf_path, status)
+        else:
+            return self._copy_pdf_to_directory(pdf_path, status)
+    
+    def _stamp_and_save_pdf(self, pdf_path: Path, status: str) -> Path:
+        """
+        Stamp PDF with approval status and save to appropriate directory.
         
         Args:
             pdf_path: Path to the original PDF file
@@ -41,70 +69,165 @@ class FileManager:
         Returns:
             Path to the stamped file in the output directory
         """
-        if not settings.enable_stamping:
-            self.logger.info("PDF stamping disabled in settings")
-            return self._copy_without_stamping(pdf_path, status)
-        
-        source_path = Path(pdf_path)
         target_dir = self.approved_dir if status == "APPROVED" else self.review_dir
-        target_path = target_dir / source_path.name
+        target_path = target_dir / pdf_path.name
         
-        self.logger.info(f"Stamping PDF: {source_path.name} with status: {status}")
+        self.logger.info(f"Stamping PDF: {pdf_path.name} with status: {status}")
         
         try:
             # Open the PDF
-            doc = pymupdf.open(pdf_path)
+            doc = pymupdf.open(str(pdf_path))
             
             # Add stamp to first page
             page = doc[0]
             rect = page.rect
-            width = 200
-            height = 50
+            pic_name = settings.stamp_pic_name
+            
+            # Calculate responsive dimensions based on content
+            status_width = len(status) * 8.5  # Approximate width for status text (14px font)
+            person_width = len(f"By {pic_name}") * 7  # Approximate width for person line (12px font)
+            time_text = f"at {datetime.now().strftime('%I:%M %p, %b %d, %Y')}"
+            time_width = len(time_text) * 7  # Approximate width for time line (12px font)
+            
+            # Find the longest line and add padding
+            content_width = max(status_width, person_width, time_width)
+            padding_x = 10  # 10px padding on each side
+            padding_y = 6   # 6px padding on top and bottom
+            border_width = 2  # 2px border on each side
+            
+            # Calculate responsive height based on content
+            status_height = 20  # Base height for status line (16px font + spacing)
+            person_height = 15  # Height for person line (12px font + spacing)
+            time_height = 15    # Height for time line (12px font + spacing)
+            
+            content_height = status_height + person_height + time_height
+            
+            # Calculate final dimensions with min/max constraints
+            width = min(max(content_width + padding_x * 2 + border_width * 2, 180), 320)
+            height = min(max(content_height + padding_y * 2 + border_width * 2, 70), 110)
             
             # Position stamp based on settings
-            if settings.stamp_position == "top-right":
-                stamp_rect = Rect(rect.width - width - 20, 20, rect.width - 20, height + 20)
-            elif settings.stamp_position == "top-left":
-                stamp_rect = Rect(20, 20, width, height)
-            elif settings.stamp_position == "bottom-left":
-                stamp_rect = Rect(20, rect.height - height, width, rect.height - 20)
-            else:  # bottom-right (default)
-                stamp_rect = Rect(rect.width - width - 20, rect.height - height - 20, rect.width - 20, rect.height - 20)
+            margin_x = 20
+            margin_y = 20
+            tb, lr = settings.stamp_position.split("-")
+
+            if tb == "top":
+                y0 = margin_y
+                y1 = margin_y + height
+            else:  # bottom
+                y0 = rect.height - height - margin_y
+                y1 = rect.height - margin_y
+            
+            if lr == "left":
+                x0 = margin_x
+                x1 = margin_x + width
+            else:  # right
+                x0 = rect.width - width - margin_x
+                x1 = rect.width - margin_x
+
+            stamp_rect = Rect(x0, y0, x1, y1)
+            
+            # Create content rectangle with padding
+            content_rect = Rect(
+                x0 + padding_x,
+                y0 + padding_y, 
+                x1 - padding_x,
+                y1 - padding_y
+            )
 
             # Set stamp color based on status
-            color = "#416a1c" if status == "APPROVED" else "#ff0000"  # Green for approved, red for review
-            bg_color = "#e4eedd" if status == "APPROVED" else "#f8d7da"  # Light background
-            today = datetime.today().date()
-            label = f"<h3>{status}</h3><p>By {pic_name} on {today}</p>"
+            color = "#416a1c" if status == "APPROVED" else "#dc3545"  # Green for approved, red for review
+            color_rgb = tuple(num / 255 for num in hex_to_rgb(color))
+            
+            # Draw the rounded rectangle background
+            page.draw_rect(
+                stamp_rect, 
+                radius=(12 / stamp_rect.width, 12 / stamp_rect.height), 
+                color=color_rgb, 
+                fill=color_rgb, 
+                fill_opacity=0.15,
+                width=2
+            )
+            
+            # Create HTML content with improved styling
+            now = datetime.now()
+            icon = "✓" if status == "APPROVED" else "⚠"
+            formatted_time = now.strftime("%I:%M %p, %b %d, %Y").replace(" 0", " ")  # Remove leading zero
+            
+            html_content = f"""
+            <div class="stamp">
+                <div class="stamp-header">
+                    <span class="stamp-icon">{icon}</span>
+                    <span class="stamp-status">{status}</span>
+                </div>
+                <div class="stamp-footer">
+                    <div class="person-line">By {pic_name}</div>
+                    <div class="time-line">at {formatted_time}</div>
+                </div>
+            </div>
+            """
+            
             css = f"""
-body {{
-    background-color: {bg_color};
-    border: 2px solid {color};
-    border-radius: 8px;
-}}
+            .stamp {{
+                height: 100%;
+                width: 100%;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: flex-start;
+            }}
+            
+            .stamp-header {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                line-height: 1.25;
+            }}
+            
+            .stamp-icon {{
+                color: {color};
+                font-size: 16px;
+                font-weight: bold;
+                text-shadow: 1px 1px 1px rgba(255,255,255,0.6);
+            }}
+            
+            .stamp-status {{
+                color: {color};
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+                font-weight: bold;
+                flex-grow: 1;
+                text-shadow: 1px 1px 1px rgba(255,255,255,0.6);
+                letter-spacing: 0.5px;
+            }}
+            
+            .stamp-footer {{
+                color: {color};
+                font-family: Arial, sans-serif;
+                font-size: 12px;
+                font-style: italic;
+                line-height: 1.25;
+                width: 100%;
+            }}
+            
+            .person-line {{
+                font-weight: 600;
+                margin-bottom: 2px;
+                text-shadow: 1px 1px 1px rgba(255,255,255,0.5);
+            }}
+            
+            .time-line {{
+                opacity: 0.85;
+                text-shadow: 1px 1px 1px rgba(255,255,255,0.5);
+            }}
+            """
 
-* {{
-    color: {color};
-    font-family: system-ui;
-    text-align: left;
-}}
-
-h3 {{
-    font-size: 16px;
-    margin-bottom: 10px;
-}}
-
-p {{
-    font-size: 13px;
-    font-style: italic;
-    margin-bottom: 0;
-}}
-"""
-
-            # Add the stamp
+            # Add the stamp using the content rectangle (with padding)
             page.insert_htmlbox(
-                stamp_rect,
-                label,
+                content_rect,
+                html_content,
                 css=css
             )
             
@@ -116,16 +239,48 @@ p {{
             return target_path
             
         except Exception as e:
-            self.logger.error(f"Failed to stamp PDF {source_path.name}: {str(e)}")
+            self.logger.error(f"Failed to stamp PDF {pdf_path.name}: {str(e)}")
             # Fallback: copy without stamping
-            return self._copy_without_stamping(pdf_path, status)
+            return self._copy_pdf_to_directory(pdf_path, status)
     
-    def _copy_without_stamping(self, pdf_path: str, status: str) -> Path:
-        """Copy PDF without stamping as fallback."""
-        source_path = Path(pdf_path)
-        target_dir = self.approved_dir if status == "APPROVED" else self.review_dir
-        target_path = target_dir / source_path.name
+    def _copy_pdf_to_directory(self, pdf_path: Path, status: str) -> Path:
+        """
+        Copy PDF to appropriate directory without stamping.
         
-        shutil.copy2(pdf_path, target_path)
-        self.logger.info(f"Copied without stamping: {target_path}")
+        Args:
+            pdf_path: Path to the original PDF file
+            status: Processing status to determine target directory
+            
+        Returns:
+            Path to the copied file
+        """
+        target_dir = self.approved_dir if status == "APPROVED" else self.review_dir
+        target_path = target_dir / pdf_path.name
+        
+        shutil.copy2(str(pdf_path), str(target_path))
+        self.logger.info(f"Copied PDF to: {target_path}")
         return target_path
+
+    def save_result(
+        self, 
+        invoice: Optional[Invoice], 
+        purchase_order: Optional[PurchaseOrder], 
+        result: ValidationResult, 
+        pdf_path: str | Path
+    ) -> Path:
+        """Save the validation result to a file."""
+        if isinstance(pdf_path, str):
+            pdf_path = Path(pdf_path)
+
+        output_path = self.output_dir / "result" / f"{pdf_path.stem}.json"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, "w") as f:
+            content = {
+                "invoice": invoice.model_dump() if invoice else None,
+                "purchase_order": purchase_order.model_dump() if purchase_order else None,
+                "validation_result": result.model_dump()
+            }
+            json.dump(content, f, indent=4)
+        self.logger.info(f"Extract and validation result saved to: {output_path}")
+        return output_path

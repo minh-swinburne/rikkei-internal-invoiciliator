@@ -5,6 +5,7 @@ class Item(BaseModel):
     """Item model for both invoice and purchase order items"""
     sku: Optional[str] = None
     vpn: Optional[str] = None
+    is_fee: bool = Field(default=False, description="Indicates if the item is a fee (e.g., shipping fee), false if it is a product.")
     description: str
     unit_price: float = Field(ge=0.0, description="Unit price must be non-negative")
     quantity_ordered: int = Field(ge=0, description="Ordered quantity must be non-negative")
@@ -37,7 +38,7 @@ class Invoice(BaseModel):
     """Invoice model"""
     invoice_number: str
     po_number: str
-    vendor: str
+    vendor: Optional[str] = None
     items: list[Item]
     extra_fees: dict[str, float] = Field(default_factory=dict)
     is_credit_memo: bool = False
@@ -55,6 +56,7 @@ class ValidationResult(BaseModel):
 
     # approved: bool = Field(alias="is_approved")
     is_approved: bool
+    vendor: Optional[str] = None
     issues: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list, description="Additional notes or comments")
     total_invoice_amount: float = 0.0

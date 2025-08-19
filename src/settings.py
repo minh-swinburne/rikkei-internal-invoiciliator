@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     # PDF Processing
     enable_stamping: bool = Field(default=True, description="Enable PDF approval stamping")
+    stamp_pic_name: str = Field(default="Jane Smith", description="Name of PIC for PDF stamp")
+    stamp_always_accept: bool = Field(default=True, description="Always stamp invoices as accepted")
     stamp_position: str = Field(default="bottom-right", description="Position for PDF stamps")
     
     model_config = {
