@@ -5,7 +5,7 @@ PDF processing for the invoice reconciliation tool.
 from pathlib import Path
 import pymupdf  # PyMuPDF
 
-from .logging_config import get_module_logger
+from ...logging_config import get_module_logger
 
 
 class PDFProcessor:

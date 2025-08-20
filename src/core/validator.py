@@ -3,7 +3,7 @@ Business rule validation for invoice and purchase order reconciliation.
 """
 
 from .models import Invoice, PurchaseOrder, ValidationResult
-from .logging_config import get_module_logger
+from ..logging_config import get_module_logger
 
 
 class InvoiceValidator:

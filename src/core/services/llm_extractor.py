@@ -9,9 +9,9 @@ from typing import Any, Optional
 from openai import OpenAI
 from pydantic import ValidationError
 
-from .models import Invoice, PurchaseOrder, Item
-from .settings import settings
-from .logging_config import get_module_logger
+from ..models import Invoice, PurchaseOrder, Item
+from ...settings import settings
+from ...logging_config import get_module_logger
 
 
 class LLMExtractor:

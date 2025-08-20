@@ -12,9 +12,9 @@ from datetime import datetime
 import pymupdf  # PyMuPDF
 from pymupdf import Rect
 
-from .models import Invoice, PurchaseOrder, ValidationResult
-from .settings import settings
-from .logging_config import get_module_logger
+from ..models import Invoice, PurchaseOrder, ValidationResult
+from ...settings import settings
+from ...logging_config import get_module_logger
 
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -277,6 +277,7 @@ class FileManager:
 
         with open(output_path, "w") as f:
             content = {
+                "pdf_path": str(pdf_path),
                 "invoice": invoice.model_dump() if invoice else None,
                 "purchase_order": purchase_order.model_dump() if purchase_order else None,
                 "validation_result": result.model_dump()
