@@ -5,10 +5,55 @@
 from pathlib import Path
 from datetime import datetime
 import pymupdf
+import os
 
 def get_timestamp():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return timestamp
+
+def get_relative_path(absolute_path: str | Path, base_path: str | Path = None) -> str:
+    """
+    Convert absolute path to relative path for cleaner UI display.
+    Always returns paths with forward slashes for consistent display.
+    
+    Args:
+        absolute_path: The absolute path to convert
+        base_path: Base path to calculate relative from (defaults to current working directory)
+    
+    Returns:
+        Relative path as string with forward slashes, or original path if conversion fails
+    """
+    try:
+        abs_path = Path(absolute_path).resolve()
+        if base_path is None:
+            base_path = Path.cwd()
+        else:
+            base_path = Path(base_path).resolve()
+        
+        # Try to get relative path
+        relative_path = abs_path.relative_to(base_path)
+        # Normalize to forward slashes for consistent UI display
+        return str(relative_path).replace('\\', '/')
+        
+    except (ValueError, OSError):
+        # If relative path cannot be calculated (e.g., different drives on Windows),
+        # return the absolute path as fallback with forward slashes
+        return str(absolute_path).replace('\\', '/')
+
+def get_project_root() -> Path:
+    """Get the project root directory."""
+    # Find the directory containing main.py or .git
+    current = Path(__file__).parent.parent  # Go up from src/ to project root
+    
+    # Look for markers that indicate project root
+    markers = ['main.py', '.git', 'requirements.txt', 'gui_launcher.py']
+    
+    for marker in markers:
+        if (current / marker).exists():
+            return current
+    
+    # Fallback to parent of src directory
+    return current
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Convert hex color to RGB tuple."""
@@ -67,3 +112,16 @@ Signature: ______________________
     doc.close()
     
     return output_path
+
+
+def normalize_path_display(path: str | Path) -> str:
+    """
+    Normalize path for consistent UI display using forward slashes.
+    
+    Args:
+        path: Path to normalize
+        
+    Returns:
+        Path string with forward slashes
+    """
+    return str(path).replace('\\', '/')

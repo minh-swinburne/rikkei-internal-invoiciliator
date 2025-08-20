@@ -8,12 +8,18 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
     QCheckBox, QComboBox, QLabel, QGroupBox, QFileDialog,
-    QMessageBox
+    QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QTextCursor, QFont, QColor
+from PySide6.QtGui import QTextCursor, QFont, QColor, QTextCharFormat, QPalette
 
 from ..logging_config import get_module_logger
+
+try:
+    import darkdetect
+    DARKDETECT_AVAILABLE = True
+except ImportError:
+    DARKDETECT_AVAILABLE = False
 
 
 class LogViewer(QGroupBox):
@@ -27,7 +33,52 @@ class LogViewer(QGroupBox):
         self.max_lines = 1000
         self.auto_scroll = True
         
+        # Theme detection
+        self._is_dark_mode = self._detect_dark_mode()
+        
         self.setup_ui()
+    
+    def _detect_dark_mode(self) -> bool:
+        """Detect if we're in dark mode using multiple methods."""        
+        # Method 1: Check Qt palette
+        try:
+            app: QApplication = QApplication.instance()
+            if app:
+                palette = app.palette()
+                window_color = palette.color(QPalette.ColorRole.Window)
+                # If window background is darker than 128, assume dark mode
+                return window_color.lightness() < 128
+        except Exception:
+            self.logger.warning("Failed to detect dark mode using Qt palette", exc_info=True)
+
+        # Method 2: Try darkdetect if available
+        if DARKDETECT_AVAILABLE:
+            try:
+                theme = darkdetect.theme()
+                if theme == 'Dark':
+                    return True
+                elif theme == 'Light':
+                    return False
+            except Exception:
+                self.logger.warning("Failed to detect dark mode using darkdetect", exc_info=True)
+
+        # Method 3: Check current theme name (fallback)
+        try:
+            app: QApplication = QApplication.instance()
+            if app:
+                style_name = app.style().objectName().lower()
+                # Some known dark themes
+                dark_themes = ['fusion', 'windows11', 'windows', 'darkstyle']
+                if any(dark in style_name for dark in dark_themes):
+                    return True
+                # Windows Vista is always light
+                if 'vista' in style_name or 'windowsvista' in style_name:
+                    return False
+        except Exception:
+            self.logger.warning("Failed to detect dark mode using current theme", exc_info=True)
+
+        # Default to light mode
+        return False
     
     def setup_ui(self):
         """Set up the user interface."""
@@ -88,14 +139,8 @@ class LogViewer(QGroupBox):
         layout.addLayout(status_layout)
     
     def add_log_message(self, level: str, message: str):
-        """Add a log message to the viewer."""
+        """Add a log message to the viewer with proper formatting."""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        # Format the log line
-        log_line = f"{timestamp} - {level.upper()} - {message}"
-        
-        # Apply color based on level
-        color = self.get_level_color(level)
         
         # Check if this level should be shown
         current_filter = self.level_filter.currentText()
@@ -112,16 +157,31 @@ class LogViewer(QGroupBox):
             cursor.removeSelectedText()
             cursor.deleteChar()  # Remove the newline
         
-        # Add to text widget
+        # Move cursor to end
         cursor = self.log_text.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         
-        # Set color for this line
-        format = cursor.charFormat()
-        format.setForeground(color)
-        cursor.setCharFormat(format)
+        # Get colors based on current theme
+        timestamp_color, level_color, message_color = self._get_log_colors(level)
         
-        cursor.insertText(log_line + "\n")
+        # Insert timestamp with muted color
+        timestamp_format = QTextCharFormat()
+        timestamp_format.setForeground(timestamp_color)
+        cursor.setCharFormat(timestamp_format)
+        cursor.insertText(f"{timestamp} - ")
+        
+        # Insert level with bold and colored text
+        level_format = QTextCharFormat()
+        level_format.setForeground(level_color)
+        level_format.setFontWeight(QFont.Weight.Bold)
+        cursor.setCharFormat(level_format)
+        cursor.insertText(level.upper())
+        
+        # Insert separator and message with normal formatting
+        separator_format = QTextCharFormat()
+        separator_format.setForeground(message_color)
+        cursor.setCharFormat(separator_format)
+        cursor.insertText(f" - {message}\n")
         
         # Auto-scroll if enabled
         if self.auto_scroll:
@@ -131,17 +191,52 @@ class LogViewer(QGroupBox):
         # Update line count
         self.update_line_count()
     
-    def get_level_color(self, level: str) -> QColor:
-        """Get color for log level."""
+    def _get_log_colors(self, level: str) -> tuple[QColor, QColor, QColor]:
+        """Get timestamp, level, and message colors based on theme and log level.
+        
+        Returns:
+            tuple: (timestamp_color, level_color, message_color)
+        """
         level = level.upper()
-        colors = {
-            'DEBUG': QColor(128, 128, 128),    # Gray
-            'INFO': QColor(0, 0, 0),           # Black
-            'WARNING': QColor(255, 165, 0),    # Orange
-            'ERROR': QColor(255, 0, 0),        # Red
-            'CRITICAL': QColor(139, 0, 0),     # Dark red
-        }
-        return colors.get(level, QColor(0, 0, 0))
+        
+        if self._is_dark_mode:
+            # Dark mode colors
+            timestamp_color = QColor(150, 150, 150)  # Muted gray for timestamp
+            message_color = QColor(220, 220, 220)    # Light gray for message text
+            
+            level_colors = {
+                'DEBUG': QColor(100, 150, 255),      # Light blue
+                'INFO': QColor(80, 200, 120),        # Nice green
+                'WARNING': QColor(255, 180, 50),     # Amber/orange
+                'ERROR': QColor(255, 120, 120),      # Soft red
+                'CRITICAL': QColor(200, 120, 255),   # Purple
+            }
+        else:
+            # Light mode colors
+            timestamp_color = QColor(120, 120, 120)  # Muted gray for timestamp
+            message_color = QColor(50, 50, 50)       # Dark gray for message text
+            
+            level_colors = {
+                'DEBUG': QColor(50, 100, 200),       # Medium blue
+                'INFO': QColor(50, 150, 80),         # Forest green
+                'WARNING': QColor(200, 140, 30),     # Amber/orange
+                'ERROR': QColor(200, 50, 50),        # Dark red
+                'CRITICAL': QColor(140, 50, 180),    # Purple
+            }
+        
+        level_color = level_colors.get(level, message_color)
+        return timestamp_color, level_color, message_color
+    
+    def get_level_color(self, level: str) -> QColor:
+        """Get color for log level (legacy method for compatibility)."""
+        _, level_color, _ = self._get_log_colors(level)
+        return level_color
+    
+    def refresh_theme(self):
+        """Refresh theme detection and update display."""
+        self._is_dark_mode = self._detect_dark_mode()
+        # Note: Existing log messages won't change color until new ones are added
+        # For full refresh, we'd need to store messages and re-render them
     
     def filter_logs(self):
         """Filter logs based on selected level."""
