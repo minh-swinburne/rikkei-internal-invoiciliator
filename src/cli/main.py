@@ -24,7 +24,7 @@ def main():
     parser.add_argument(
         "--input-dir",
         type=str,
-        default="data/input",
+        default="data/input/test",
         help="Input directory containing vendor subdirectories (default: data/input)"
     )
     

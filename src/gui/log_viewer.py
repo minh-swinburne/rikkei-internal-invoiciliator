@@ -33,6 +33,9 @@ class LogViewer(QGroupBox):
         self.max_lines = 1000
         self.auto_scroll = True
         
+        # Message storage for re-rendering
+        self.stored_messages = []  # List of (level, message, timestamp) tuples
+        
         # Theme detection
         self._is_dark_mode = self._detect_dark_mode()
         
@@ -142,6 +145,13 @@ class LogViewer(QGroupBox):
         """Add a log message to the viewer with proper formatting."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         
+        # Store the message for re-rendering
+        self.stored_messages.append((level, message, timestamp))
+        
+        # Limit stored messages to max_lines
+        if len(self.stored_messages) > self.max_lines:
+            self.stored_messages.pop(0)
+        
         # Check if this level should be shown
         current_filter = self.level_filter.currentText()
         if current_filter != "ALL" and level.upper() != current_filter:
@@ -157,6 +167,14 @@ class LogViewer(QGroupBox):
             cursor.removeSelectedText()
             cursor.deleteChar()  # Remove the newline
         
+        # Render the message
+        self._render_log_message(level, message, timestamp)
+        
+        # Render the message
+        self._render_log_message(level, message, timestamp)
+    
+    def _render_log_message(self, level: str, message: str, timestamp: str):
+        """Render a single log message to the text widget."""
         # Move cursor to end
         cursor = self.log_text.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -190,6 +208,21 @@ class LogViewer(QGroupBox):
         
         # Update line count
         self.update_line_count()
+    
+    def rerender_all_messages(self):
+        """Re-render all stored messages with current theme colors."""
+        # Clear the text widget
+        self.log_text.clear()
+        
+        # Re-render all stored messages that match current filter
+        current_filter = self.level_filter.currentText()
+        
+        for level, message, timestamp in self.stored_messages:
+            # Check if this level should be shown
+            if current_filter != "ALL" and level.upper() != current_filter:
+                continue
+            
+            self._render_log_message(level, message, timestamp)
     
     def _get_log_colors(self, level: str) -> tuple[QColor, QColor, QColor]:
         """Get timestamp, level, and message colors based on theme and log level.

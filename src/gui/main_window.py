@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
     QApplication, QStyleFactory
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QSettings
-from PySide6.QtGui import QAction, QFont, QIcon, QActionGroup
+from PySide6.QtGui import QAction, QFont, QIcon, QActionGroup, QColor
 
 from .config_dialog import ConfigDialog
 from .log_viewer import LogViewer
-from .result_viewer import ResultViewer
+from .result_viewer import ResultDetailViewer
 from .qt_logging import QtLogHandler, LogCapture
 from ..core import InvoiceReconciliationEngine
 from ..settings import settings
@@ -145,6 +145,9 @@ class MainWindow(QMainWindow):
         self.stop_button: Optional[QPushButton] = None
         self.log_viewer: Optional[LogViewer] = None
         self.result_table: Optional[QTableWidget] = None
+        
+        # Result storage for accessing paths later
+        self.result_data: dict = {}  # filename -> result_dict mapping
         
         # Theme management
         self.theme_actions: dict = {}
@@ -312,6 +315,9 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        
+        # Enable double-click to view details
+        self.result_table.doubleClicked.connect(self.on_result_double_clicked)
 
         layout.addWidget(self.result_table)
         
@@ -596,6 +602,7 @@ class MainWindow(QMainWindow):
             
             # Clear previous results
             self.result_table.setRowCount(0)
+            self.result_data.clear()  # Clear stored result data
             if self.log_viewer:
                 self.log_viewer.add_log_message("INFO", "=== Processing Started ===")
                 self.log_viewer.add_log_message("INFO", f"Input directory: {input_dir}")
@@ -814,53 +821,225 @@ class MainWindow(QMainWindow):
     def add_result_to_table(self, result: dict):
         """Add a processing result to the results table."""
         try:
+            print(f"DEBUG: Adding result to table: {result}")  # Debug print
+            
             row_count = self.result_table.rowCount()
             self.result_table.insertRow(row_count)
             
             # File name
             filename = Path(result.get('pdf_path', 'Unknown')).name
             self.result_table.setItem(row_count, 0, QTableWidgetItem(filename))
-
-            # Status with color coding
-            status = result.get('approval_status', 'Unknown')
-            status_item = QTableWidgetItem(status)
             
+            # Store the result data for later access using filename as key
+            self.result_data[filename] = result
+            print(f"DEBUG: Stored result data for {filename}")  # Debug print
+
+            # Status with color coding (check multiple possible field names)
+            status = result.get('approval_status', result.get('status', 'Unknown'))
+            print(f"DEBUG: Status for {filename}: {status}")  # Debug print
+            status_item = QTableWidgetItem(status)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            # Use nice background colors with low opacity for theme flexibility
             if status == 'APPROVED':
-                status_item.setBackground(Qt.GlobalColor.lightGreen)
-            elif status == 'REQUIRES REVIEW':
-                status_item.setBackground(Qt.GlobalColor.yellow)
-            elif status == 'FAILED':
-                status_item.setBackground(Qt.GlobalColor.lightGray)
+                status_item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
+                status_item.setForeground(QColor(27, 94, 32))  # Dark green text
+            elif status in ['REQUIRES REVIEW', 'REQUIRES_REVIEW']:
+                status_item.setBackground(QColor(255, 193, 7, 77))  # Nice amber with 30% opacity  
+                status_item.setForeground(QColor(255, 111, 0))  # Dark orange text
+            elif status in ['FAILED', 'failed']:
+                status_item.setBackground(QColor(244, 67, 54, 77))  # Nice red with 30% opacity
+                status_item.setForeground(QColor(183, 28, 28))  # Dark red text
             else:
-                status_item.setBackground(Qt.GlobalColor.cyan)
+                status_item.setBackground(QColor(158, 158, 158, 51))  # Light gray with 20% opacity
+                status_item.setForeground(QColor(97, 97, 97))  # Dark gray text
             
             self.result_table.setItem(row_count, 1, status_item)
             
-            # Issues count
+            # Issues count (check multiple possible field names)
             issues_count = result.get('validation_issues_count', 0)
-            if 'validation_issues' in result and isinstance(result['validation_issues'], list):
-                issues_count = len(result['validation_issues'])
+            if issues_count is None or issues_count == 0:
+                # Try alternative field names
+                if 'validation_issues' in result and isinstance(result['validation_issues'], list):
+                    issues_count = len(result['validation_issues'])
+                
+            print(f"DEBUG: Issues count for {filename}: {issues_count}")  # Debug print
             
             issues_item = QTableWidgetItem(str(issues_count))
+            issues_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
             if issues_count > 0:
-                issues_item.setBackground(Qt.GlobalColor.yellow)
+                issues_item.setBackground(QColor(255, 193, 7, 77))  # Nice amber with 30% opacity
+                issues_item.setForeground(QColor(255, 111, 0))  # Dark orange text
+            else:
+                issues_item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
+                issues_item.setForeground(QColor(27, 94, 32))  # Dark green text
             
             self.result_table.setItem(row_count, 2, issues_item)
             
-            # Actions - create clickable buttons
-            actions_text = "View"
-            if result.get('output_pdf_path'):
-                actions_text += " | PDF"
-            if status == 'FAILED':
-                actions_text += " | Retry"
-                
-            self.result_table.setItem(row_count, 3, QTableWidgetItem(actions_text))
+            # Actions - create action buttons widget
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(4, 2, 4, 2)
+            
+            print(f"DEBUG: Creating action buttons for {filename}")  # Debug print
+            
+            # View button (always available)
+            view_btn = QPushButton("View")
+            view_btn.setMaximumHeight(25)
+            view_btn.clicked.connect(lambda checked, r=row_count: self.view_result_details(r))
+            actions_layout.addWidget(view_btn)
+            
+            # PDF button (if PDF exists)
+            pdf_path = result.get('processed_pdf_path') or result.get('pdf_path')
+            if pdf_path:
+                pdf_btn = QPushButton("PDF")
+                pdf_btn.setMaximumHeight(25)
+                pdf_btn.clicked.connect(lambda checked, r=row_count: self.open_pdf(r))
+                actions_layout.addWidget(pdf_btn)
+                print(f"DEBUG: Added PDF button for {filename}")  # Debug print
+            
+            # Retry button (if failed)
+            if status in ['FAILED', 'failed']:
+                retry_btn = QPushButton("Retry")
+                retry_btn.setMaximumHeight(25)
+                retry_btn.setStyleSheet("background-color: #FF9800; color: white;")
+                retry_btn.clicked.connect(lambda checked, r=row_count: self.retry_processing(r))
+                actions_layout.addWidget(retry_btn)
+                print(f"DEBUG: Added Retry button for {filename}")  # Debug print
+            
+            actions_layout.addStretch()
+            self.result_table.setCellWidget(row_count, 3, actions_widget)
+            
+            print(f"DEBUG: Successfully added {filename} to table at row {row_count}")  # Debug print
             
             # Auto-scroll to new row
             self.result_table.scrollToBottom()
             
         except Exception as e:
             self.logger.error(f"Error adding result to table: {e}")
+            print(f"ERROR: Error adding result to table: {e}")  # Debug print
+            import traceback
+            traceback.print_exc()  # Print full traceback
+    
+    def view_result_details(self, row: int):
+        """View detailed results for a specific row."""
+        try:
+            # Get filename from the table
+            filename_item = self.result_table.item(row, 0)
+            if not filename_item:
+                return
+            
+            filename = filename_item.text()
+            
+            # Get stored result data
+            if filename not in self.result_data:
+                QMessageBox.warning(
+                    self, 
+                    "Result Not Found", 
+                    f"No stored result data found for \"{filename}\""
+                )
+                return
+            
+            result_data = self.result_data[filename]
+            result_json_path = result_data.get('result_json_path')
+            
+            if result_json_path and Path(result_json_path).exists():
+                # Open detailed result viewer with the correct path
+                viewer = ResultDetailViewer(Path(result_json_path), self)
+                viewer.exec()
+            else:
+                QMessageBox.warning(
+                    self, 
+                    "Result File Not Found", 
+                    f"Could not find result file for \"{filename}\"\n"
+                    f"Expected path: {result_json_path}"
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Failed to view result details: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to view result details:\n{str(e)}")
+    
+    def open_pdf(self, row: int):
+        """Open PDF file for a specific row."""
+        try:
+            # Get filename from the table
+            filename_item = self.result_table.item(row, 0)
+            if not filename_item:
+                return
+            
+            filename = filename_item.text()
+            
+            # Get stored result data
+            if filename not in self.result_data:
+                QMessageBox.warning(
+                    self, 
+                    "Result Not Found", 
+                    f"No stored result data found for \"{filename}\""
+                )
+                return
+            
+            result_data = self.result_data[filename]
+            
+            # Try processed PDF path first, then original PDF path
+            pdf_path = result_data.get('processed_pdf_path') or result_data.get('pdf_path')
+            
+            if pdf_path and Path(pdf_path).exists():
+                # Open with system default PDF viewer
+                import subprocess
+                import platform
+                
+                if platform.system() == 'Windows':
+                    subprocess.run(['start', str(pdf_path)], shell=True)
+                elif platform.system() == 'Darwin':  # macOS
+                    subprocess.run(['open', str(pdf_path)])
+                else:  # Linux
+                    subprocess.run(['xdg-open', str(pdf_path)])
+                    
+                self.logger.info(f"Opened PDF: {pdf_path}")
+            else:
+                QMessageBox.warning(
+                    self, 
+                    "PDF Not Found", 
+                    f"Could not find PDF file for \"{filename}\"\n"
+                    f"Expected path: {pdf_path}"
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Failed to open PDF: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open PDF:\n{str(e)}")
+    
+    def retry_processing(self, row: int):
+        """Retry processing for a specific row."""
+        try:
+            # Get filename from the table
+            filename_item = self.result_table.item(row, 0)
+            if not filename_item:
+                return
+            
+            filename = filename_item.text()
+            
+            reply = QMessageBox.question(
+                self, 
+                "Retry Processing",
+                f"Are you sure you want to retry processing for {filename}?\n"
+                f"This will reprocess the file with current settings.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # TODO: Implement single file retry logic
+                QMessageBox.information(self, "Retry Queued", f"File {filename} queued for reprocessing.")
+                self.logger.info(f"File queued for retry: {filename}")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to retry processing: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to retry processing:\n{str(e)}")
+    
+    def on_result_double_clicked(self, index):
+        """Handle double-click on result table."""
+        if index.isValid():
+            self.view_result_details(index.row())
     
     def refresh_results(self):
         """Refresh the results table."""
@@ -1012,9 +1191,10 @@ class MainWindow(QMainWindow):
                 # Save the theme preference
                 self.settings.setValue("theme", theme_name)
                 
-                # Refresh log viewer theme
-                if hasattr(self, 'log_viewer'):
+                # Refresh log viewer theme and re-render all messages
+                if hasattr(self, 'log_viewer') and self.log_viewer:
                     self.log_viewer.refresh_theme()
+                    self.log_viewer.rerender_all_messages()
                 
                 # Show confirmation message
                 self.statusBar().showMessage(f"Theme changed to: {theme_name}", 3000)

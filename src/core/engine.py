@@ -7,7 +7,7 @@ used by both CLI and GUI applications.
 """
 
 from pathlib import Path
-from typing import List, Optional, Callable, Any
+from typing import Optional, Callable, Any
 import logging
 
 from .service_manager import ServiceManager
@@ -56,7 +56,7 @@ class InvoiceReconciliationEngine:
         self.current_workflow = None
         self.logger.info("Engine cleanup completed")
     
-    def find_pdf_files(self, input_dir: Path) -> List[Path]:
+    def find_pdf_files(self, input_dir: Path) -> list[Path]:
         """
         Find all PDF files in the input directory.
         
@@ -64,7 +64,7 @@ class InvoiceReconciliationEngine:
             input_dir: Directory to search for PDF files
             
         Returns:
-            List of PDF file paths
+            list of PDF file paths
         """
         self.logger.info(f"Searching for PDF files in: {input_dir}")
         
@@ -258,7 +258,7 @@ class InvoiceReconciliationEngine:
             return {'total_files': 0, 'processed_files': 0, 'progress_percent': 0}
         return self.current_workflow.get_progress()
     
-    def get_workflow_results(self) -> List[ProcessingResult]:
+    def get_workflow_results(self) -> list[ProcessingResult]:
         """Get all processing results from the current workflow."""
         if not self.current_workflow:
             return []

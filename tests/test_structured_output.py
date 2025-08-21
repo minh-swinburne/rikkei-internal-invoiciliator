@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.logging_config import setup_logging, get_module_logger
 from src.settings import settings
-from src.llm_extractor import LLMExtractor
+from src.core.services.llm_extractor import LLMExtractor
 
 
 def test_structured_output():

@@ -5,7 +5,7 @@ Core processing workflow models and status tracking.
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 from datetime import datetime
 
 from .models import Invoice, PurchaseOrder, ValidationResult
@@ -69,7 +69,7 @@ class ProcessingResult:
         self.error_details = error_details
         self.mark_completed(success=False)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             'pdf_path': str(self.pdf_path),
@@ -99,7 +99,7 @@ class ProcessingWorkflow:
     
     input_dir: Path
     output_dir: Path
-    results: List[ProcessingResult] = field(default_factory=list)
+    results: list[ProcessingResult] = field(default_factory=list)
     current_result: Optional[ProcessingResult] = None
     
     # Progress tracking
@@ -112,7 +112,7 @@ class ProcessingWorkflow:
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     
-    def start(self, pdf_files: List[Path]) -> None:
+    def start(self, pdf_files: list[Path]) -> None:
         """Start the workflow with a list of PDF files."""
         self.started_at = datetime.now()
         self.total_files = len(pdf_files)
@@ -168,7 +168,7 @@ class ProcessingWorkflow:
         """Check if the workflow is complete."""
         return (self.completed_files + self.failed_files) >= self.total_files or self.cancelled
     
-    def get_progress(self) -> Dict[str, Any]:
+    def get_progress(self) -> dict[str, Any]:
         """Get current progress information."""
         processed = self.completed_files + self.failed_files
         progress_percent = (processed / self.total_files * 100) if self.total_files > 0 else 0
@@ -186,7 +186,7 @@ class ProcessingWorkflow:
             'current_status': self.current_result.status.value if self.current_result else None
         }
     
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get workflow summary."""
         processing_time = None
         if self.started_at:

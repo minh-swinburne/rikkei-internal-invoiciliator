@@ -67,7 +67,7 @@ class InvoiceReconciliationApp:
         """Set up logging for the GUI application."""
         self.logger = setup_logging(
             log_level="INFO",
-            console_output=False,  # Don't clutter GUI with console output
+            console_output=True,  # Enable console output for debugging
             is_test=False
         )
         self.logger.info("=== Invoice Reconciliation GUI Started ===")
