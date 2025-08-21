@@ -56,7 +56,13 @@ class LLMExtractor:
             invoice = Invoice(**invoice_data)
             # Create PurchaseOrder object  
             purchase_order = PurchaseOrder(**po_data)
-            
+
+            # Check invoice items' shipped quantity
+            for item in invoice.items:
+                if item.quantity_shipped is None or item.quantity_shipped == 0:
+                    # Fallback to ordered quantity
+                    item.quantity_shipped = item.quantity_ordered
+
             self.logger.info(f"✅ Successfully created Invoice {invoice.invoice_number} and PO {purchase_order.po_number}")
             return invoice, purchase_order
             
@@ -125,7 +131,7 @@ class LLMExtractor:
                                             },
                                             "quantity_shipped": {
                                                 "type": "integer",
-                                                "description": "Number of units shipped. If not provided, defaults to ordered quantity."
+                                                "description": "Number of units shipped. If not explicitly provided, defaults to found quantity."
                                             },
                                             "total": {
                                                 "type": "number", 

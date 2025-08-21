@@ -178,11 +178,10 @@ class InvoiceReconciliationEngine:
             final_path = file_manager.process_pdf(pdf_path, approval_status)
             result.processed_pdf_path = final_path
             
-            # Step 5: Save extraction and validation results
-            result_path = file_manager.save_result(invoice, purchase_order, validation_result, final_path)
-            result.result_json_path = result_path
-            
+            # Step 5: Save the complete processing result
             result.mark_completed(success=True)
+            result_path = file_manager.save_result(result)
+            
             self.logger.info(f"Successfully processed PDF: {final_path}")
             
         except Exception as e:

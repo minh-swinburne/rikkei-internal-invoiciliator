@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, Any
 from datetime import datetime
+from pydantic import BaseModel, Field
 
 from .models import Invoice, PurchaseOrder, ValidationResult
 
@@ -23,8 +24,7 @@ class ProcessingStatus(Enum):
     CANCELLED = "cancelled"
 
 
-@dataclass
-class ProcessingResult:
+class ProcessingResult(BaseModel):
     """Result of processing a single PDF file."""
     
     # File information
@@ -32,7 +32,7 @@ class ProcessingResult:
     status: ProcessingStatus
     
     # Processing timestamps
-    started_at: datetime = field(default_factory=datetime.now)
+    started_at: datetime = Field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
     
     # Extracted data
@@ -68,29 +68,6 @@ class ProcessingResult:
         self.error_message = error_message
         self.error_details = error_details
         self.mark_completed(success=False)
-    
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            'pdf_path': str(self.pdf_path),
-            'status': self.status.value,
-            'started_at': self.started_at.isoformat() if self.started_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
-            'processing_time_seconds': self.processing_time_seconds,
-            'approval_status': self.approval_status,
-            'processed_pdf_path': str(self.processed_pdf_path) if self.processed_pdf_path else None,
-            'result_json_path': str(self.result_json_path) if self.result_json_path else None,
-            'error_message': self.error_message,
-            'error_details': self.error_details,
-            'has_invoice': self.invoice is not None,
-            'has_purchase_order': self.purchase_order is not None,
-            'has_validation_result': self.validation_result is not None,
-            'invoice_number': self.invoice.invoice_number if self.invoice else None,
-            'po_number': self.purchase_order.po_number if self.purchase_order else None,
-            'vendor': self.invoice.vendor if self.invoice else None,
-            'validation_issues_count': len(self.validation_result.issues) if self.validation_result else 0,
-            'is_approved': self.validation_result.is_approved if self.validation_result else False
-        }
 
 
 @dataclass 

@@ -5,16 +5,18 @@ Result viewer dialog for detailed invoice reconciliation results.
 import json
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
+    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QTextEdit, 
     QPushButton, QGroupBox, QTableWidget, QTableWidgetItem,
     QSplitter, QTabWidget, QWidget, QScrollArea, QMessageBox,
     QHeaderView, QFileDialog
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QColor, QIcon
+
+from src.utils import load_json
 
 from ..logging_config import get_module_logger
 from .pdf_viewer import PDFViewer
@@ -28,14 +30,36 @@ class ResultDetailViewer(QDialog):
         super().__init__(parent)
         self.logger = get_module_logger('gui.result_viewer')
         self.result_file = result_file
-        self.result_data: Optional[Dict[str, Any]] = None
+        self.result_data: Optional[dict[str, Any]] = None
+        self.pdf_viewer = None  # Initialize to prevent crashes
         
         self.setWindowTitle(f"Invoice Details: {result_file.stem}")
         self.setMinimumSize(800, 600)
         self.resize(1000, 700)
         
-        self.setup_ui()
-        self.load_result_data()
+        # Set window flags to ensure proper cleanup
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Dialog)
+        
+        try:
+            self.setup_ui()
+            self.load_result_data()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize result viewer: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to load result viewer:\n{str(e)}")
+    
+    def closeEvent(self, event):
+        """Handle window close event with proper cleanup."""
+        try:
+            # Clean up PDF viewer resources
+            if hasattr(self, 'pdf_viewer') and self.pdf_viewer:
+                if hasattr(self.pdf_viewer, 'pdf_document') and self.pdf_viewer.pdf_document:
+                    self.pdf_viewer.pdf_document.close()
+                
+            self.logger.debug("Result viewer window closed")
+            event.accept()
+        except Exception as e:
+            self.logger.error(f"Error during result viewer cleanup: {e}")
+            event.accept()  # Accept the event anyway to prevent hanging
     
     def setup_ui(self):
         """Set up the user interface."""
@@ -52,7 +76,17 @@ class ResultDetailViewer(QDialog):
         except Exception as e:
             # Fallback to PyMuPDF viewer
             self.logger.warning(f"Native PDF viewer not available, using PyMuPDF fallback: {e}")
-            self.pdf_viewer = PDFViewer()
+            try:
+                self.pdf_viewer = PDFViewer()
+            except Exception as fallback_error:
+                self.logger.error(f"Failed to create fallback PDF viewer: {fallback_error}")
+                # Create placeholder widget
+                self.pdf_viewer = QWidget()
+                layout = QVBoxLayout(self.pdf_viewer)
+                error_label = QLabel("PDF viewer not available")
+                error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                error_label.setStyleSheet("color: red; font-weight: bold;")
+                layout.addWidget(error_label)
         
         main_splitter.addWidget(self.pdf_viewer)
         
@@ -164,19 +198,59 @@ class ResultDetailViewer(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        scroll_area = QScrollArea()
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
+        # Invoice header info
+        self.invoice_header_group = QGroupBox("Invoice Information")
+        header_layout = QGridLayout(self.invoice_header_group)
         
-        self.invoice_details = QTextEdit()
-        self.invoice_details.setReadOnly(True)
-        self.invoice_details.setFont(QFont("Consolas", 10))
-        scroll_layout.addWidget(self.invoice_details)
+        # Create labels for header info
+        self.invoice_number_label = QLabel("Loading...")
+        self.invoice_vendor_label = QLabel("Loading...")
+        self.invoice_po_ref_label = QLabel("Loading...")
+        self.invoice_credit_memo_label = QLabel("Loading...")
         
-        scroll_area.setWidget(scroll_widget)
-        scroll_area.setWidgetResizable(True)
-        layout.addWidget(scroll_area)
+        header_layout.addWidget(QLabel("Invoice Number:"), 0, 0)
+        header_layout.addWidget(self.invoice_number_label, 0, 1)
+        header_layout.addWidget(QLabel("Vendor:"), 1, 0)
+        header_layout.addWidget(self.invoice_vendor_label, 1, 1)
+        header_layout.addWidget(QLabel("PO Reference:"), 2, 0)
+        header_layout.addWidget(self.invoice_po_ref_label, 2, 1)
+        header_layout.addWidget(QLabel("Credit Memo:"), 3, 0)
+        header_layout.addWidget(self.invoice_credit_memo_label, 3, 1)
         
+        layout.addWidget(self.invoice_header_group)
+        
+        # Invoice items table
+        self.invoice_items_group = QGroupBox("Invoice Items")
+        items_layout = QVBoxLayout(self.invoice_items_group)
+        
+        self.invoice_items_table = QTableWidget()
+        self.invoice_items_table.setColumnCount(6)
+        self.invoice_items_table.setHorizontalHeaderLabels([
+            "SKU/VPN", "Description", "Qty Ordered", "Qty Shipped", "Unit Price", "Total"
+        ])
+        
+        # Set table properties
+        self.invoice_items_table.setAlternatingRowColors(True)
+        self.invoice_items_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.invoice_items_table.setMaximumHeight(300)  # Limit height to ~10 rows
+        
+        # Configure column widths
+        header = self.invoice_items_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        items_layout.addWidget(self.invoice_items_table)
+        layout.addWidget(self.invoice_items_group)
+        
+        # Extra fees section
+        self.invoice_fees_group = QGroupBox("Extra Fees")
+        fees_layout = QVBoxLayout(self.invoice_fees_group)
+        self.invoice_fees_label = QLabel("No extra fees")
+        fees_layout.addWidget(self.invoice_fees_label)
+        layout.addWidget(self.invoice_fees_group)
+        
+        layout.addStretch()
         return widget
     
     def create_po_tab(self) -> QWidget:
@@ -184,19 +258,50 @@ class ResultDetailViewer(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        scroll_area = QScrollArea()
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
+        # PO header info
+        self.po_header_group = QGroupBox("Purchase Order Information")
+        header_layout = QGridLayout(self.po_header_group)
         
-        self.po_details = QTextEdit()
-        self.po_details.setReadOnly(True)
-        self.po_details.setFont(QFont("Consolas", 10))
-        scroll_layout.addWidget(self.po_details)
+        # Create labels for header info
+        self.po_number_label = QLabel("Loading...")
         
-        scroll_area.setWidget(scroll_widget)
-        scroll_area.setWidgetResizable(True)
-        layout.addWidget(scroll_area)
+        header_layout.addWidget(QLabel("PO Number:"), 0, 0)
+        header_layout.addWidget(self.po_number_label, 0, 1)
         
+        layout.addWidget(self.po_header_group)
+        
+        # PO items table
+        self.po_items_group = QGroupBox("Purchase Order Items")
+        items_layout = QVBoxLayout(self.po_items_group)
+        
+        self.po_items_table = QTableWidget()
+        self.po_items_table.setColumnCount(5)
+        self.po_items_table.setHorizontalHeaderLabels([
+            "SKU/VPN", "Description", "Qty Ordered", "Unit Price", "Total"
+        ])
+        
+        # Set table properties
+        self.po_items_table.setAlternatingRowColors(True)
+        self.po_items_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.po_items_table.setMaximumHeight(300)  # Limit height to ~10 rows
+        
+        # Configure column widths
+        header = self.po_items_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        items_layout.addWidget(self.po_items_table)
+        layout.addWidget(self.po_items_group)
+        
+        # Extra fees section
+        self.po_fees_group = QGroupBox("Extra Fees")
+        fees_layout = QVBoxLayout(self.po_fees_group)
+        self.po_fees_label = QLabel("No extra fees")
+        fees_layout.addWidget(self.po_fees_label)
+        layout.addWidget(self.po_fees_group)
+        
+        layout.addStretch()
         return widget
     
     def create_items_tab(self) -> QWidget:
@@ -215,7 +320,7 @@ class ResultDetailViewer(QDialog):
         header = self.items_table.horizontalHeader()
         header.setStretchLastSection(True)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         
         layout.addWidget(self.items_table)
         return widget
@@ -225,11 +330,64 @@ class ResultDetailViewer(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        self.validation_text = QTextEdit()
-        self.validation_text.setReadOnly(True)
-        self.validation_text.setFont(QFont("Consolas", 10))
-        layout.addWidget(self.validation_text)
+        # Validation Status Section
+        self.validation_status_group = QGroupBox("Validation Status")
+        status_layout = QGridLayout(self.validation_status_group)
         
+        # Status labels
+        self.validation_approved_label = QLabel("Loading...")
+        self.validation_vendor_label = QLabel("Loading...")
+        self.validation_invoice_total_label = QLabel("Loading...")
+        self.validation_po_total_label = QLabel("Loading...")
+        
+        status_layout.addWidget(QLabel("Approved:"), 0, 0)
+        status_layout.addWidget(self.validation_approved_label, 0, 1)
+        status_layout.addWidget(QLabel("Vendor:"), 1, 0)
+        status_layout.addWidget(self.validation_vendor_label, 1, 1)
+        status_layout.addWidget(QLabel("Invoice Total:"), 2, 0)
+        status_layout.addWidget(self.validation_invoice_total_label, 2, 1)
+        status_layout.addWidget(QLabel("PO Total:"), 3, 0)
+        status_layout.addWidget(self.validation_po_total_label, 3, 1)
+        
+        layout.addWidget(self.validation_status_group)
+        
+        # Issues Section
+        self.validation_issues_group = QGroupBox("Issues Found")
+        issues_layout = QVBoxLayout(self.validation_issues_group)
+        
+        self.validation_issues_table = QTableWidget()
+        self.validation_issues_table.setColumnCount(2)
+        self.validation_issues_table.setHorizontalHeaderLabels(["#", "Issue Description"])
+        self.validation_issues_table.setMaximumHeight(200)  # Limit height
+        self.validation_issues_table.setAlternatingRowColors(True)
+        
+        # Configure column widths
+        issues_header = self.validation_issues_table.horizontalHeader()
+        issues_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        issues_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        issues_layout.addWidget(self.validation_issues_table)
+        layout.addWidget(self.validation_issues_group)
+        
+        # Notes Section
+        self.validation_notes_group = QGroupBox("Additional Notes")
+        notes_layout = QVBoxLayout(self.validation_notes_group)
+        
+        self.validation_notes_table = QTableWidget()
+        self.validation_notes_table.setColumnCount(2)
+        self.validation_notes_table.setHorizontalHeaderLabels(["#", "Note"])
+        self.validation_notes_table.setMaximumHeight(150)  # Limit height
+        self.validation_notes_table.setAlternatingRowColors(True)
+        
+        # Configure column widths
+        notes_header = self.validation_notes_table.horizontalHeader()
+        notes_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        notes_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        notes_layout.addWidget(self.validation_notes_table)
+        layout.addWidget(self.validation_notes_group)
+        
+        layout.addStretch()
         return widget
     
     def create_raw_tab(self) -> QWidget:
@@ -248,17 +406,49 @@ class ResultDetailViewer(QDialog):
         """Load the result data from file."""
         try:
             if self.result_file.exists():
-                with open(self.result_file, 'r', encoding='utf-8') as f:
-                    self.result_data = json.load(f)
-                
-                self.populate_ui()
+                self.result_data = load_json(self.result_file, self.logger)
+
+                if self.result_data is not None:
+                    self.populate_ui()
+                else:
+                    # JSON loading failed, show error but still try to load PDF
+                    self.logger.warning(f"Failed to load JSON data from {self.result_file}")
+                    self.show_json_error()
+                        
+                # Always try to load PDF regardless of JSON success
                 self.load_pdf()
             else:
                 QMessageBox.warning(self, "File Not Found", f"Result file not found:\n{self.result_file}")
                 
         except Exception as e:
             self.logger.error(f"Failed to load result data: {e}")
-            QMessageBox.critical(self, "Load Error", f"Failed to load result data:\n{str(e)}")
+            # Still try to load PDF even if JSON fails completely
+            self.show_json_error(str(e))
+            self.load_pdf()
+    
+    def show_json_error(self, error_msg: str = ""):
+        """Show error in UI when JSON loading fails but still allow PDF viewing."""
+        try:
+            # Set error status in summary
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("Status: ERROR - JSON Load Failed")
+                self.status_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #f44336;")
+            
+            if hasattr(self, 'issues_label'):
+                self.issues_label.setText("Issues: Unable to load validation data")
+            
+            if hasattr(self, 'processed_time_label'):
+                self.processed_time_label.setText("Processed: Unknown (JSON load error)")
+            
+            # Show error message in raw data tab if available
+            if hasattr(self, 'raw_text'):
+                error_details = f"Error loading JSON data:\n{error_msg}\n\nFile: {self.result_file}"
+                self.raw_text.setText(error_details)
+            
+            self.logger.info("Set error status in UI, PDF viewer should still be available")
+            
+        except Exception as e:
+            self.logger.error(f"Error setting JSON error status: {e}")
     
     def populate_ui(self):
         """Populate the UI with loaded data."""
@@ -294,23 +484,33 @@ class ResultDetailViewer(QDialog):
             self.issues_label.setText(f"Issues: {len(issues)}")
             
             # Update processed time
-            processed_time = self.result_data.get('processed_timestamp', 'Unknown')
+            completed_at = self.result_data.get('completed_at')
+            if completed_at:
+                # If it's an ISO string, just show it nicely
+                if isinstance(completed_at, str):
+                    processed_time = completed_at.replace('T', ' ').split('.')[0]  # Remove microseconds
+                else:
+                    processed_time = str(completed_at)
+            else:
+                # Fallback to legacy field name
+                processed_time = self.result_data.get('processed_timestamp', 'Unknown')
+            
             self.processed_time_label.setText(f"Processed: {processed_time}")
             
             # Populate invoice data
-            invoice_data = self.result_data.get('invoice_data', {})
-            self.invoice_details.setText(self.format_data_display(invoice_data))
+            invoice_data = self.result_data.get('invoice', {})
+            self.populate_invoice_tab(invoice_data)
             
             # Populate PO data
-            po_data = self.result_data.get('po_data', {})
-            self.po_details.setText(self.format_data_display(po_data))
+            po_data = self.result_data.get('purchase_order', {})
+            self.populate_po_tab(po_data)
             
             # Populate items table
             self.populate_items_table()
             
             # Populate validation results
             validation_result = self.result_data.get('validation_result', {})
-            self.validation_text.setText(self.format_validation_display(validation_result))
+            self.populate_validation_tab(validation_result)
             
             # Populate raw data
             self.raw_text.setText(json.dumps(self.result_data, indent=2))
@@ -318,7 +518,7 @@ class ResultDetailViewer(QDialog):
         except Exception as e:
             self.logger.error(f"Failed to populate UI: {e}")
     
-    def format_data_display(self, data: Dict[str, Any]) -> str:
+    def format_data_display(self, data: dict[str, Any]) -> str:
         """Format data for display in text widgets."""
         if not data:
             return "No data available"
@@ -340,14 +540,14 @@ class ResultDetailViewer(QDialog):
         
         return "\n".join(lines)
     
-    def format_validation_display(self, validation: Dict[str, Any]) -> str:
+    def format_validation_display(self, validation: dict[str, Any]) -> str:
         """Format validation results for display."""
         if not validation:
             return "No validation data available"
         
         lines = []
-        lines.append(f"Overall Status: {validation.get('overall_status', 'Unknown')}")
-        lines.append(f"Processing Success: {validation.get('processing_success', False)}")
+        lines.append(f"Approved: {validation.get('is_approved', False)}")
+        lines.append(f"Vendor: {validation.get('vendor', 'Unknown')}")
         lines.append("")
         
         # Issues
@@ -368,33 +568,50 @@ class ResultDetailViewer(QDialog):
             for i, note in enumerate(notes, 1):
                 lines.append(f"{i}. {note}")
         
+        # Totals
+        lines.append("")
+        lines.append(f"Total Invoice Amount: ${validation.get('total_invoice_amount', 0.0):.2f}")
+        lines.append(f"Total PO Amount: ${validation.get('total_po_amount', 0.0):.2f}")
+        
         return "\n".join(lines)
     
     def populate_items_table(self):
         """Populate the items comparison table."""
         try:
-            invoice_items = self.result_data.get('invoice_data', {}).get('items', [])
-            po_items = self.result_data.get('po_data', {}).get('items', [])
+            invoice_items = self.result_data.get('invoice', {}).get('items', [])
+            po_items = self.result_data.get('purchase_order', {}).get('items', [])
             
             # Create a combined view of items
             all_skus = set()
             for item in invoice_items:
-                all_skus.add(item.get('sku') or item.get('vpn', ''))
+                identifier = item.get('sku') or item.get('vpn') or ''
+                if identifier:
+                    all_skus.add(identifier)
             for item in po_items:
-                all_skus.add(item.get('sku') or item.get('vpn', ''))
+                identifier = item.get('sku') or item.get('vpn') or ''
+                if identifier:
+                    all_skus.add(identifier)
             
             self.items_table.setRowCount(len(all_skus))
             
-            for row, sku in enumerate(sorted(all_skus)):
-                # Find matching items
-                inv_item = next((item for item in invoice_items if item.get('sku') == sku or item.get('vpn') == sku), {})
-                po_item = next((item for item in po_items if item.get('sku') == sku or item.get('vpn') == sku), {})
+            for row, identifier in enumerate(sorted(all_skus)):
+                # Find matching items by SKU or VPN
+                inv_item = next((item for item in invoice_items 
+                               if item.get('sku') == identifier or item.get('vpn') == identifier), {})
+                po_item = next((item for item in po_items 
+                              if item.get('sku') == identifier or item.get('vpn') == identifier), {})
                 
                 # Populate row
-                self.items_table.setItem(row, 0, QTableWidgetItem(sku))
-                self.items_table.setItem(row, 1, QTableWidgetItem(inv_item.get('description', po_item.get('description', ''))))
-                self.items_table.setItem(row, 2, QTableWidgetItem(str(inv_item.get('quantity', 0))))
-                self.items_table.setItem(row, 3, QTableWidgetItem(str(po_item.get('quantity', 0))))
+                self.items_table.setItem(row, 0, QTableWidgetItem(identifier))
+                self.items_table.setItem(row, 1, QTableWidgetItem(
+                    inv_item.get('description', po_item.get('description', ''))))
+                
+                # Use quantity_shipped for invoice, quantity_ordered for PO
+                inv_qty = inv_item.get('quantity_shipped') or inv_item.get('quantity_ordered') or 0
+                po_qty = po_item.get('quantity_ordered') or 0
+                
+                self.items_table.setItem(row, 2, QTableWidgetItem(str(inv_qty)))
+                self.items_table.setItem(row, 3, QTableWidgetItem(str(po_qty)))
                 self.items_table.setItem(row, 4, QTableWidgetItem(f"${inv_item.get('unit_price', 0):.2f}"))
                 self.items_table.setItem(row, 5, QTableWidgetItem(f"${po_item.get('unit_price', 0):.2f}"))
                 
@@ -402,10 +619,11 @@ class ResultDetailViewer(QDialog):
                 status = "OK"
                 issues = []
                 
-                inv_qty = inv_item.get('quantity', 0)
-                po_qty = po_item.get('quantity', 0)
-                inv_price = inv_item.get('unit_price', 0)
-                po_price = po_item.get('unit_price', 0)
+                # Use safe quantity comparisons (handle None values)
+                inv_qty = inv_item.get('quantity_shipped') or inv_item.get('quantity_ordered') or 0
+                po_qty = po_item.get('quantity_ordered') or 0
+                inv_price = inv_item.get('unit_price') or 0
+                po_price = po_item.get('unit_price') or 0
                 
                 if not inv_item and po_item:
                     status = "Missing from Invoice"
@@ -448,41 +666,280 @@ class ResultDetailViewer(QDialog):
         try:
             pdf_path = None
             
-            # First, try to get PDF path from stored result data
-            if self.result_data and 'pdf_path' in self.result_data:
-                pdf_path = Path(self.result_data['pdf_path'])
-                # If it's relative, make it absolute from workspace root
-                if not pdf_path.is_absolute():
-                    workspace_root = Path(__file__).parent.parent.parent
-                    pdf_path = workspace_root / pdf_path
-            
-            # If no PDF path in data, look for PDF file with same name as result file
-            if not pdf_path or not pdf_path.exists():
-                pdf_path = self.result_file.parent / f"{self.result_file.stem}.pdf"
-            
-            # If still not found, try input file path
-            if not pdf_path.exists() and self.result_data:
-                input_path = self.result_data.get('input_file_path')
-                if input_path:
-                    input_pdf = Path(input_path)
-                    if not input_pdf.is_absolute():
+            # First, try to get PDF path from stored result data (if available)
+            if self.result_data:
+                pdf_path_str = self.result_data.get('processed_pdf_path') or self.result_data.get('pdf_path')
+                if pdf_path_str is not None:
+                    pdf_path = Path(pdf_path_str)
+                    # If it's relative, make it absolute from workspace root
+                    if not pdf_path.is_absolute():
                         workspace_root = Path(__file__).parent.parent.parent
-                        input_pdf = workspace_root / input_pdf
-                    if input_pdf.exists():
-                        pdf_path = input_pdf
+                        pdf_path = workspace_root / pdf_path
+            
+            # If no PDF path in data (or no data), look for PDF file with same name as result file
+            if not pdf_path or not pdf_path.exists():
+                # Try common locations for the PDF file
+                pdf_candidates = [
+                    # Same directory as JSON with same base name
+                    self.result_file.parent / f"{self.result_file.stem}.pdf",
+                    # Input directory with same name
+                    Path("data/input") / f"{self.result_file.stem}.pdf",
+                    # Try to extract original path from result file name pattern
+                ]
+                
+                # If we have result data, try paths from it
+                if self.result_data:
+                    # Try processed_pdf_path first (this is the stamped PDF)
+                    processed_path = self.result_data.get('processed_pdf_path')
+                    if processed_path:
+                        processed_pdf = Path(processed_path)
+                        if not processed_pdf.is_absolute():
+                            workspace_root = Path(__file__).parent.parent.parent
+                            processed_pdf = workspace_root / processed_path
+                        pdf_candidates.insert(0, processed_pdf)
+                    
+                    # Fall back to original pdf_path if processed doesn't exist
+                    original_path = self.result_data.get('pdf_path')
+                    if original_path:
+                        original_pdf = Path(original_path)
+                        if not original_pdf.is_absolute():
+                            workspace_root = Path(__file__).parent.parent.parent
+                            original_pdf = workspace_root / original_path
+                        pdf_candidates.insert(-1, original_pdf)
+                
+                # Try each candidate path
+                for candidate in pdf_candidates:
+                    if candidate and candidate.exists():
+                        pdf_path = candidate
+                        break
             
             # Try to load the PDF
             if pdf_path and pdf_path.exists():
                 self.logger.info(f"Loading PDF: {pdf_path}")
-                self.pdf_viewer.load_pdf(pdf_path)
+                # Only try to load if we have a proper PDF viewer
+                if hasattr(self.pdf_viewer, 'load_pdf'):
+                    try:
+                        self.pdf_viewer.load_pdf(pdf_path)
+                    except Exception as load_error:
+                        self.logger.error(f"Failed to load PDF file: {load_error}")
+                        # Try to show error message if supported
+                        if hasattr(self.pdf_viewer, 'show_message'):
+                            self.pdf_viewer.show_message(f"Failed to load PDF: {str(load_error)}")
+                else:
+                    self.logger.warning("PDF viewer does not support loading files")
             else:
                 error_msg = f"PDF file not found. Tried: {pdf_path if pdf_path else 'No path available'}"
                 self.logger.warning(error_msg)
-                self.pdf_viewer.show_message(error_msg)
+                # Only show message if viewer supports it
+                if hasattr(self.pdf_viewer, 'show_message'):
+                    self.pdf_viewer.show_message(error_msg)
                     
         except Exception as e:
             self.logger.error(f"Failed to load PDF: {e}")
             self.pdf_viewer.show_message(f"Error loading PDF: {str(e)}")
+    
+    def populate_invoice_tab(self, invoice_data: dict[str, Any]) -> None:
+        """Populate the invoice tab with structured data."""
+        if not invoice_data:
+            return
+        
+        try:
+            # Populate header information
+            self.invoice_number_label.setText(invoice_data.get('invoice_number', 'N/A'))
+            self.invoice_vendor_label.setText(invoice_data.get('vendor', 'N/A'))
+            self.invoice_po_ref_label.setText(invoice_data.get('po_number', 'N/A'))
+            
+            is_credit = invoice_data.get('is_credit_memo', False)
+            credit_text = "Yes" if is_credit else "No"
+            self.invoice_credit_memo_label.setText(credit_text)
+            if is_credit:
+                self.invoice_credit_memo_label.setStyleSheet("color: #FF5722; font-weight: bold;")
+            
+            # Populate items table
+            items = invoice_data.get('items', [])
+            self.invoice_items_table.setRowCount(len(items))
+            
+            for row, item in enumerate(items):
+                # SKU/VPN
+                identifier = item.get('sku') or item.get('vpn') or 'N/A'
+                self.invoice_items_table.setItem(row, 0, QTableWidgetItem(identifier))
+                
+                # Description
+                desc = item.get('description', 'N/A')
+                self.invoice_items_table.setItem(row, 1, QTableWidgetItem(desc))
+                
+                # Quantities
+                qty_ordered = item.get('quantity_ordered', 0)
+                qty_shipped = item.get('quantity_shipped', qty_ordered)  # Default to ordered if not specified
+                self.invoice_items_table.setItem(row, 2, QTableWidgetItem(str(qty_ordered)))
+                self.invoice_items_table.setItem(row, 3, QTableWidgetItem(str(qty_shipped)))
+                
+                # Prices (handle None values)
+                unit_price = item.get('unit_price') or 0.0
+                qty_shipped = qty_shipped or 0  # Ensure we don't multiply by None
+                total = item.get('total') or (unit_price * qty_shipped)
+                self.invoice_items_table.setItem(row, 4, QTableWidgetItem(f"${unit_price:.2f}"))
+                self.invoice_items_table.setItem(row, 5, QTableWidgetItem(f"${total:.2f}"))
+                
+                # Color code fees
+                is_fee = item.get('is_fee', False)
+                if is_fee:
+                    for col in range(6):
+                        cell_item = self.invoice_items_table.item(row, col)
+                        if cell_item:
+                            cell_item.setBackground(QColor(255, 248, 220))  # Light yellow for fees
+            
+            # Populate extra fees
+            extra_fees = invoice_data.get('extra_fees', {})
+            if extra_fees:
+                fees_text = "\n".join([f"{name}: ${amount:.2f}" for name, amount in extra_fees.items()])
+                self.invoice_fees_label.setText(fees_text)
+            else:
+                self.invoice_fees_label.setText("No extra fees")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to populate invoice tab: {e}")
+    
+    def populate_po_tab(self, po_data: dict[str, Any]) -> None:
+        """Populate the purchase order tab with structured data."""
+        if not po_data:
+            return
+        
+        try:
+            # Populate header information
+            self.po_number_label.setText(po_data.get('po_number', 'N/A'))
+            
+            # Populate items table
+            items = po_data.get('items', [])
+            self.po_items_table.setRowCount(len(items))
+            
+            for row, item in enumerate(items):
+                # SKU/VPN
+                identifier = item.get('sku') or item.get('vpn') or 'N/A'
+                self.po_items_table.setItem(row, 0, QTableWidgetItem(identifier))
+                
+                # Description
+                desc = item.get('description', 'N/A')
+                self.po_items_table.setItem(row, 1, QTableWidgetItem(desc))
+                
+                # Quantity
+                qty_ordered = item.get('quantity_ordered') or 0
+                self.po_items_table.setItem(row, 2, QTableWidgetItem(str(qty_ordered)))
+                
+                # Prices (handle None values)
+                unit_price = item.get('unit_price') or 0.0
+                total = item.get('total') or (unit_price * qty_ordered)
+                self.po_items_table.setItem(row, 3, QTableWidgetItem(f"${unit_price:.2f}"))
+                self.po_items_table.setItem(row, 4, QTableWidgetItem(f"${total:.2f}"))
+                
+                # Color code fees
+                is_fee = item.get('is_fee', False)
+                if is_fee:
+                    for col in range(5):
+                        cell_item = self.po_items_table.item(row, col)
+                        if cell_item:
+                            cell_item.setBackground(QColor(255, 248, 220))  # Light yellow for fees
+            
+            # Populate extra fees
+            extra_fees = po_data.get('extra_fees', {})
+            if extra_fees:
+                fees_text = "\n".join([f"{name}: ${amount:.2f}" for name, amount in extra_fees.items()])
+                self.po_fees_label.setText(fees_text)
+            else:
+                self.po_fees_label.setText("No extra fees")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to populate PO tab: {e}")
+    
+    def populate_validation_tab(self, validation_data: dict[str, Any]) -> None:
+        """Populate the validation tab with structured data."""
+        if not validation_data:
+            return
+        
+        try:
+            # Populate status information
+            is_approved = validation_data.get('is_approved', False)
+            approval_text = "✅ APPROVED" if is_approved else "❌ NOT APPROVED"
+            approval_color = "#4CAF50" if is_approved else "#F44336"
+            
+            self.validation_approved_label.setText(approval_text)
+            self.validation_approved_label.setStyleSheet(f"color: {approval_color}; font-weight: bold;")
+            
+            self.validation_vendor_label.setText(validation_data.get('vendor', 'N/A'))
+            
+            invoice_total = validation_data.get('total_invoice_amount', 0.0)
+            po_total = validation_data.get('total_po_amount', 0.0)
+            
+            self.validation_invoice_total_label.setText(f"${invoice_total:.2f}")
+            self.validation_po_total_label.setText(f"${po_total:.2f}")
+            
+            # Color code totals if they don't match
+            if abs(invoice_total - po_total) > 0.01:  # Allow for small rounding differences
+                self.validation_invoice_total_label.setStyleSheet("color: #FF9800; font-weight: bold;")
+                self.validation_po_total_label.setStyleSheet("color: #FF9800; font-weight: bold;")
+            else:
+                self.validation_invoice_total_label.setStyleSheet("color: #4CAF50; font-weight: bold;")
+                self.validation_po_total_label.setStyleSheet("color: #4CAF50; font-weight: bold;")
+            
+            # Populate issues table
+            issues = validation_data.get('issues', [])
+            self.validation_issues_table.setRowCount(len(issues))
+            
+            for row, issue in enumerate(issues):
+                # Issue number
+                self.validation_issues_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+                
+                # Issue description with color coding
+                issue_item = QTableWidgetItem(str(issue))
+                
+                # Color code based on severity (simple heuristic)
+                if any(keyword in issue.lower() for keyword in ['error', 'mismatch', 'missing', 'invalid']):
+                    issue_item.setBackground(QColor(255, 235, 235))  # Light red for errors
+                elif any(keyword in issue.lower() for keyword in ['warning', 'partial', 'difference']):
+                    issue_item.setBackground(QColor(255, 248, 220))  # Light yellow for warnings
+                
+                self.validation_issues_table.setItem(row, 1, issue_item)
+            
+            # If no issues, show a positive message
+            if not issues:
+                self.validation_issues_table.setRowCount(1)
+                self.validation_issues_table.setItem(0, 0, QTableWidgetItem("✓"))
+                success_item = QTableWidgetItem("No validation issues found")
+                success_item.setBackground(QColor(235, 255, 235))  # Light green
+                self.validation_issues_table.setItem(0, 1, success_item)
+            
+            # Populate notes table
+            notes = validation_data.get('notes', [])
+            self.validation_notes_table.setRowCount(len(notes))
+            
+            for row, note in enumerate(notes):
+                # Note number
+                self.validation_notes_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+                
+                # Note description
+                self.validation_notes_table.setItem(row, 1, QTableWidgetItem(str(note)))
+            
+            # If no notes, show a placeholder
+            if not notes:
+                self.validation_notes_table.setRowCount(1)
+                self.validation_notes_table.setItem(0, 0, QTableWidgetItem("-"))
+                self.validation_notes_table.setItem(0, 1, QTableWidgetItem("No additional notes"))
+                
+        except Exception as e:
+            self.logger.error(f"Failed to populate validation tab: {e}")
+    
+    def show_not_implemented_dialog(self, feature_name: str, description: str = ""):
+        """Show a dialog for features that are not yet implemented."""
+        full_description = f"The '{feature_name}' feature is not implemented yet."
+        if description:
+            full_description += f"\n\n{description}"
+        full_description += "\n\nThis feature may be added in future versions if requested by users."
+        
+        QMessageBox.information(
+            self,
+            "Feature Not Implemented",
+            full_description
+        )
     
     def approve_override(self):
         """Approve the result with override."""
@@ -495,9 +952,10 @@ class ResultDetailViewer(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # TODO: Implement approval logic
-            QMessageBox.information(self, "Approved", "Invoice approved with override.")
-            self.logger.info(f"Invoice approved with override: {self.result_file.name}")
+            self.show_not_implemented_dialog(
+                "Approval Override",
+                "This would mark the invoice as approved despite validation issues, move it to the approved folder, and create an audit trail of the manual override decision."
+            )
     
     def reject_for_review(self):
         """Reject the result for manual review."""
@@ -509,9 +967,10 @@ class ResultDetailViewer(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # TODO: Implement rejection logic
-            QMessageBox.information(self, "Rejected", "Invoice marked for manual review.")
-            self.logger.info(f"Invoice rejected for review: {self.result_file.name}")
+            self.show_not_implemented_dialog(
+                "Reject for Review",
+                "This would mark the invoice for manual review, move it to the review folder, and create a task for human verification of the validation issues."
+            )
     
     def reprocess_file(self):
         """Reprocess the file."""
@@ -524,9 +983,10 @@ class ResultDetailViewer(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # TODO: Implement reprocessing logic
-            QMessageBox.information(self, "Reprocessing", "File queued for reprocessing.")
-            self.logger.info(f"File queued for reprocessing: {self.result_file.name}")
+            self.show_not_implemented_dialog(
+                "File Reprocessing",
+                "This would reprocess the current invoice file with the latest settings and algorithms, generating a new result while preserving the original for comparison."
+            )
     
     def export_results(self):
         """Export the results to a file."""

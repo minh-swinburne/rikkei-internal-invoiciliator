@@ -2,6 +2,7 @@
 Main window for the invoice reconciliation GUI application.
 """
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (
     QApplication, QStyleFactory
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QSettings
-from PySide6.QtGui import QAction, QFont, QIcon, QActionGroup, QColor
+from PySide6.QtGui import QAction, QFont, QIcon, QActionGroup, QColor, QPalette
 
 from .config_dialog import ConfigDialog
 from .log_viewer import LogViewer
@@ -22,7 +23,7 @@ from .qt_logging import QtLogHandler, LogCapture
 from ..core import InvoiceReconciliationEngine
 from ..settings import settings
 from ..logging_config import get_module_logger
-from ..utils import get_relative_path, get_project_root, normalize_path_display
+from ..utils import get_relative_path, get_project_root, load_json, normalize_path_display
 
 
 class ProcessingThread(QThread):
@@ -86,7 +87,7 @@ class ProcessingThread(QThread):
     def emit_file_started(self, result):
         """Emit file started signal with error handling."""
         try:
-            result_dict = result.to_dict() if hasattr(result, 'to_dict') else result
+            result_dict = result.model_dump() if hasattr(result, 'model_dump') else result
             self.file_started.emit(result_dict)
         except Exception as e:
             print(f"Error emitting file started: {e}")
@@ -94,7 +95,7 @@ class ProcessingThread(QThread):
     def emit_file_completed(self, result):
         """Emit file completed signal with error handling."""
         try:
-            result_dict = result.to_dict() if hasattr(result, 'to_dict') else result
+            result_dict = result.model_dump() if hasattr(result, 'model_dump') else result
             self.file_completed.emit(result_dict)
         except Exception as e:
             print(f"Error emitting file completed: {e}")
@@ -159,6 +160,98 @@ class MainWindow(QMainWindow):
         self.load_settings()
         self.load_theme()
         self.update_ui_state()
+        
+        # Add timer for initial theme refresh
+        QTimer.singleShot(200, self._refresh_all_themes)
+    
+    def _detect_dark_mode(self) -> bool:
+        """Detect if we're in dark mode."""
+        try:
+            app: QApplication = QApplication.instance()
+            if app:
+                palette = app.palette()
+                window_color = palette.color(QPalette.ColorRole.Window)
+                # If window background is darker than 128, assume dark mode
+                return window_color.lightness() < 128
+        except Exception:
+            pass
+        return False
+    
+    def _refresh_all_themes(self):
+        """Refresh themes for all components."""
+        try:
+            if hasattr(self, 'log_viewer') and self.log_viewer:
+                self.log_viewer.refresh_theme()
+            # Refresh result table if it has items
+            if hasattr(self, 'result_table') and self.result_table.rowCount() > 0:
+                self._refresh_result_table_colors()
+        except Exception as e:
+            self.logger.error(f"Error refreshing themes: {e}")
+    
+    def _refresh_result_table_colors(self):
+        """Refresh colors for all items in the result table."""
+        try:
+            is_dark = self._detect_dark_mode()
+            for row in range(self.result_table.rowCount()):
+                status_item = self.result_table.item(row, 1)  # Status column
+                if status_item:
+                    status = status_item.text()
+                    self._apply_status_colors(status_item, status, is_dark)
+                    
+                issues_item = self.result_table.item(row, 2)  # Issues column
+                if issues_item:
+                    issues_count = int(issues_item.text()) if issues_item.text().isdigit() else 0
+                    self._apply_issues_colors(issues_item, issues_count, is_dark)
+        except Exception as e:
+            self.logger.error(f"Error refreshing result table colors: {e}")
+    
+    def _apply_status_colors(self, item: QTableWidgetItem, status: str, is_dark: bool):
+        """Apply theme-appropriate colors to status items."""
+        if status == 'APPROVED':
+            if is_dark:
+                item.setBackground(QColor(129, 199, 132, 100))  # Light green with higher opacity for dark mode
+                item.setForeground(QColor(200, 230, 201))  # Very light green text
+            else:
+                item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
+                item.setForeground(QColor(27, 94, 32))  # Dark green text
+        elif status in ['REQUIRES REVIEW', 'REQUIRES_REVIEW']:
+            if is_dark:
+                item.setBackground(QColor(255, 224, 130, 100))  # Light amber with higher opacity for dark mode
+                item.setForeground(QColor(255, 245, 157))  # Very light amber text
+            else:
+                item.setBackground(QColor(255, 193, 7, 77))  # Nice amber with 30% opacity  
+                item.setForeground(QColor(255, 111, 0))  # Dark orange text
+        elif status in ['FAILED', 'failed']:
+            if is_dark:
+                item.setBackground(QColor(239, 154, 154, 100))  # Light red with higher opacity for dark mode
+                item.setForeground(QColor(255, 205, 210))  # Very light red text
+            else:
+                item.setBackground(QColor(244, 67, 54, 77))  # Nice red with 30% opacity
+                item.setForeground(QColor(183, 28, 28))  # Dark red text
+        else:
+            if is_dark:
+                item.setBackground(QColor(189, 189, 189, 100))  # Light gray with higher opacity for dark mode
+                item.setForeground(QColor(224, 224, 224))  # Very light gray text
+            else:
+                item.setBackground(QColor(158, 158, 158, 51))  # Light gray with 20% opacity
+                item.setForeground(QColor(97, 97, 97))  # Dark gray text
+    
+    def _apply_issues_colors(self, item: QTableWidgetItem, issues_count: int, is_dark: bool):
+        """Apply theme-appropriate colors to issues items."""
+        if issues_count > 0:
+            if is_dark:
+                item.setBackground(QColor(255, 224, 130, 100))  # Light amber with higher opacity for dark mode
+                item.setForeground(QColor(255, 245, 157))  # Very light amber text
+            else:
+                item.setBackground(QColor(255, 193, 7, 77))  # Nice amber with 30% opacity
+                item.setForeground(QColor(255, 111, 0))  # Dark orange text
+        else:
+            if is_dark:
+                item.setBackground(QColor(129, 199, 132, 100))  # Light green with higher opacity for dark mode
+                item.setForeground(QColor(200, 230, 201))  # Very light green text
+            else:
+                item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
+                item.setForeground(QColor(27, 94, 32))  # Dark green text
     
     def setup_ui(self):
         """Set up the user interface."""
@@ -332,6 +425,12 @@ class MainWindow(QMainWindow):
         export_btn.clicked.connect(self.export_results)
         button_layout.addWidget(export_btn)
         
+        # Import results button
+        import_button = QPushButton("Import Results")
+        import_button.clicked.connect(self.import_results)
+        import_button.setToolTip("Import existing JSON result files from a folder")
+        button_layout.addWidget(import_button)
+        
         open_output_btn = QPushButton("Open Output Folder")
         open_output_btn.clicked.connect(self.open_output_folder)
         button_layout.addWidget(open_output_btn)
@@ -408,6 +507,24 @@ class MainWindow(QMainWindow):
         
         # Set PIC name from settings
         self.pic_name_edit.setText(settings.stamp_pic_name)
+    
+    def save_settings(self):
+        """Save current UI settings."""
+        try:
+            # Save window geometry
+            self.settings.setValue("geometry", self.saveGeometry())
+            self.settings.setValue("windowState", self.saveState())
+            
+            # Save directory paths
+            self.settings.setValue("input_dir", self.input_dir_edit.text())
+            self.settings.setValue("output_dir", self.output_dir_edit.text())
+            self.settings.setValue("pic_name", self.pic_name_edit.text())
+            
+            self.settings.sync()
+            self.logger.debug("Settings saved successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to save settings: {e}")
+    
     
     def update_ui_state(self, processing: bool = False):
         """Update UI state based on processing status."""
@@ -643,15 +760,123 @@ class MainWindow(QMainWindow):
         if self.log_viewer:
             self.log_viewer.clear()
     
-    def refresh_results(self):
-        """Refresh the results table."""
-        # TODO: Implement results refresh
-        pass
+    def import_results(self):
+        """Import existing JSON result files from a folder."""
+        try:
+            folder_path = QFileDialog.getExistingDirectory(
+                self,
+                "Select folder containing JSON result files",
+                str(Path.cwd() / "data" / "output"),
+            )
+            
+            if not folder_path:
+                return
+            
+            folder = Path(folder_path)
+            json_files = list(folder.rglob("*.json"))
+            
+            if not json_files:
+                QMessageBox.information(
+                    self, 
+                    "No Files Found", 
+                    f"No JSON files found in the selected folder:\n{folder}"
+                )
+                return
+            
+            # Clear current results
+            self.result_data.clear()
+            self.result_table.setRowCount(0)
+            
+            imported_count = 0
+            failed_count = 0
+            
+            for json_file in json_files:
+                result_data = load_json(json_file)
+
+                if result_data is not None:
+                    # Extract filename for the key (without .json extension)
+                    filename = json_file.stem
+
+                    # Store the result data
+                    self.result_data[filename] = result_data
+                
+                    # Add to table
+                    self.add_result_to_table(result_data)
+                    imported_count += 1
+                else:
+                    failed_count += 1
+            
+            # Show success message
+            message = f"Successfully imported {imported_count} result files"
+            if failed_count > 0:
+                message += f" ({failed_count} files failed to import)"
+            
+            QMessageBox.information(self, "Import Complete", message)
+            self.logger.info(f"Imported {imported_count} results from {folder}")
+            
+            if self.log_viewer:
+                self.log_viewer.add_log_message("INFO", f"Imported {imported_count} result files")
+            
+        except Exception as e:
+            error_msg = f"Error importing results: {str(e)}"
+            self.logger.error(error_msg)
+            QMessageBox.critical(self, "Import Error", error_msg)
     
-    def export_results(self):
-        """Export processing results."""
-        # TODO: Implement results export
-        pass
+    def closeEvent(self, event):
+        """Handle application close event with proper cleanup."""
+        try:
+            self.logger.info("Application shutting down...")
+            
+            # Stop any running processing
+            if self.processing_thread and self.processing_thread.isRunning():
+                self.logger.info("Stopping processing thread...")
+                self.processing_thread.terminate()
+                if not self.processing_thread.wait(3000):  # Wait 3 seconds
+                    self.logger.warning("Processing thread did not stop gracefully")
+                    self.processing_thread.kill()
+            
+            # Save settings
+            self.save_settings()
+            
+            # Clean up engine resources
+            if self.engine:
+                self.logger.debug("Cleaning up engine resources")
+                del self.engine
+                self.engine = None
+            
+            self.logger.info("Application shutdown complete")
+            event.accept()
+            
+        except Exception as e:
+            self.logger.error(f"Error during application shutdown: {e}")
+            event.accept()  # Accept anyway to prevent hanging
+    
+    def show_not_implemented_dialog(self, feature_name: str, description: str = ""):
+        """Show a dialog for features that are not yet implemented."""
+        full_description = f"The '{feature_name}' feature is not implemented yet."
+        if description:
+            full_description += f"\n\n{description}"
+        full_description += "\n\nThis feature may be added in future versions if requested by users."
+        
+        QMessageBox.information(
+            self,
+            "Feature Not Implemented",
+            full_description
+        )
+    
+    # def refresh_results(self):
+    #     """Refresh the results table."""
+    #     self.show_not_implemented_dialog(
+    #         "Results Refresh",
+    #         "This would reload the results table from the output directory and update the display with any new or modified result files."
+    #     )
+    
+    # def export_results(self):
+    #     """Export processing results."""
+    #     self.show_not_implemented_dialog(
+    #         "Results Export",
+    #         "This would allow exporting the processing results to various formats such as CSV, Excel, or detailed PDF reports for analysis and record-keeping."
+    #     )
     
     def open_output_folder(self):
         """Open the output folder in file explorer."""
@@ -840,19 +1065,9 @@ class MainWindow(QMainWindow):
             status_item = QTableWidgetItem(status)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            # Use nice background colors with low opacity for theme flexibility
-            if status == 'APPROVED':
-                status_item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
-                status_item.setForeground(QColor(27, 94, 32))  # Dark green text
-            elif status in ['REQUIRES REVIEW', 'REQUIRES_REVIEW']:
-                status_item.setBackground(QColor(255, 193, 7, 77))  # Nice amber with 30% opacity  
-                status_item.setForeground(QColor(255, 111, 0))  # Dark orange text
-            elif status in ['FAILED', 'failed']:
-                status_item.setBackground(QColor(244, 67, 54, 77))  # Nice red with 30% opacity
-                status_item.setForeground(QColor(183, 28, 28))  # Dark red text
-            else:
-                status_item.setBackground(QColor(158, 158, 158, 51))  # Light gray with 20% opacity
-                status_item.setForeground(QColor(97, 97, 97))  # Dark gray text
+            # Apply theme-aware colors
+            is_dark = self._detect_dark_mode()
+            self._apply_status_colors(status_item, status, is_dark)
             
             self.result_table.setItem(row_count, 1, status_item)
             
@@ -868,12 +1083,8 @@ class MainWindow(QMainWindow):
             issues_item = QTableWidgetItem(str(issues_count))
             issues_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            if issues_count > 0:
-                issues_item.setBackground(QColor(255, 193, 7, 77))  # Nice amber with 30% opacity
-                issues_item.setForeground(QColor(255, 111, 0))  # Dark orange text
-            else:
-                issues_item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
-                issues_item.setForeground(QColor(27, 94, 32))  # Dark green text
+            # Apply theme-aware colors for issues column
+            self._apply_issues_colors(issues_item, issues_count, is_dark)
             
             self.result_table.setItem(row_count, 2, issues_item)
             
@@ -947,7 +1158,15 @@ class MainWindow(QMainWindow):
             if result_json_path and Path(result_json_path).exists():
                 # Open detailed result viewer with the correct path
                 viewer = ResultDetailViewer(Path(result_json_path), self)
-                viewer.exec()
+                # Use show() instead of exec() to prevent modal dialog issues
+                viewer.show()
+                # Keep a reference to prevent garbage collection
+                if not hasattr(self, '_open_viewers'):
+                    self._open_viewers = []
+                self._open_viewers.append(viewer)
+                
+                # Clean up closed viewers
+                self._open_viewers = [v for v in self._open_viewers if v.isVisible()]
             else:
                 QMessageBox.warning(
                     self, 
@@ -990,7 +1209,9 @@ class MainWindow(QMainWindow):
                 import platform
                 
                 if platform.system() == 'Windows':
-                    subprocess.run(['start', str(pdf_path)], shell=True)
+                    # Use os.startfile for Windows for better compatibility
+                    import os
+                    os.startfile(str(pdf_path))
                 elif platform.system() == 'Darwin':  # macOS
                     subprocess.run(['open', str(pdf_path)])
                 else:  # Linux
@@ -1028,9 +1249,10 @@ class MainWindow(QMainWindow):
             )
             
             if reply == QMessageBox.StandardButton.Yes:
-                # TODO: Implement single file retry logic
-                QMessageBox.information(self, "Retry Queued", f"File {filename} queued for reprocessing.")
-                self.logger.info(f"File queued for retry: {filename}")
+                self.show_not_implemented_dialog(
+                    "Single File Retry",
+                    f"This would reprocess the file '{filename}' with current settings and generate a new result. The original result would be preserved for comparison."
+                )
                 
         except Exception as e:
             self.logger.error(f"Failed to retry processing: {e}")
@@ -1055,7 +1277,7 @@ class MainWindow(QMainWindow):
             
             # Re-populate table
             for result in results:
-                self.add_result_to_table(result.to_dict() if hasattr(result, 'to_dict') else result)
+                self.add_result_to_table(result.model_dump() if hasattr(result, 'model_dump') else result)
             
             self.logger.info("Results table refreshed")
             if self.log_viewer:
@@ -1194,7 +1416,10 @@ class MainWindow(QMainWindow):
                 # Refresh log viewer theme and re-render all messages
                 if hasattr(self, 'log_viewer') and self.log_viewer:
                     self.log_viewer.refresh_theme()
-                    self.log_viewer.rerender_all_messages()
+                
+                # Refresh result table colors for the new theme
+                if hasattr(self, 'result_table') and self.result_table.rowCount() > 0:
+                    self._refresh_result_table_colors()
                 
                 # Show confirmation message
                 self.statusBar().showMessage(f"Theme changed to: {theme_name}", 3000)
@@ -1229,6 +1454,10 @@ class MainWindow(QMainWindow):
                 app.setStyle(theme_style)
                 self.logger.info(f"Applied saved theme: {saved_theme} ({theme_style})")
                 
+                # Refresh theme for all components after theme is applied
+                if hasattr(self, 'log_viewer') and self.log_viewer:
+                    QTimer.singleShot(100, self.log_viewer.refresh_theme)  # Delay to ensure theme is applied
+                    
         except Exception as e:
             self.logger.warning(f"Failed to load saved theme: {e}")
     

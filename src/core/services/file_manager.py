@@ -5,7 +5,7 @@ Handles PDF stamping and file organization.
 
 import json
 import shutil
-from typing import Optional, Union
+from typing import Optional, Union, TYPE_CHECKING
 from pathlib import Path
 from datetime import datetime
 
@@ -15,6 +15,9 @@ from pymupdf import Rect
 from ..models import Invoice, PurchaseOrder, ValidationResult
 from ...settings import settings
 from ...logging_config import get_module_logger
+
+if TYPE_CHECKING:
+    from ..workflow import ProcessingResult
 
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -263,25 +266,18 @@ class FileManager:
 
     def save_result(
         self, 
-        invoice: Optional[Invoice], 
-        purchase_order: Optional[PurchaseOrder], 
-        result: ValidationResult, 
-        pdf_path: str | Path
+        processing_result: 'ProcessingResult'
     ) -> Path:
-        """Save the validation result to a file."""
-        if isinstance(pdf_path, str):
-            pdf_path = Path(pdf_path)
-
+        """Save the complete processing result to a file."""
+        pdf_path = processing_result.pdf_path
         output_path = self.output_dir / "result" / f"{pdf_path.stem}.json"
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        processing_result.result_json_path = output_path
 
         with open(output_path, "w") as f:
-            content = {
-                "pdf_path": str(pdf_path),
-                "invoice": invoice.model_dump() if invoice else None,
-                "purchase_order": purchase_order.model_dump() if purchase_order else None,
-                "validation_result": result.model_dump()
-            }
-            json.dump(content, f, indent=4)
-        self.logger.info(f"Extract and validation result saved to: {output_path}")
+            # Use Pydantic's model_dump_json for consistent serialization
+            json_content = processing_result.model_dump_json(indent=4)
+            f.write(json_content)
+            
+        self.logger.info(f"Processing result saved to: {output_path}")
         return output_path

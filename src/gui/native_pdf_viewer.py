@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QMessageBox, QComboBox, QFrame, QSpinBox
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QPointF
 from PySide6.QtGui import QAction
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
@@ -98,6 +98,10 @@ class NativePDFViewer(QWidget):
         # Connect document to view
         self.pdf_view.setDocument(self.pdf_document)
         
+        # Connect page navigator to update spinbox
+        page_navigator = self.pdf_view.pageNavigator()
+        page_navigator.currentPageChanged.connect(self.on_current_page_changed)
+        
         layout.addWidget(self.pdf_view)
         
         # Initialize controls
@@ -146,6 +150,16 @@ class NativePDFViewer(QWidget):
         self.page_count_label.setText(f"of {page_count}")
         self.update_controls()
     
+    def on_current_page_changed(self, page_index: int):
+        """Handle current page changes from the PDF view."""
+        # QPdfView uses 0-based indexing, spinbox uses 1-based
+        page_number = page_index + 1
+        # Block signals to prevent infinite loop
+        self.page_spinbox.blockSignals(True)
+        self.page_spinbox.setValue(page_number)
+        self.page_spinbox.blockSignals(False)
+        self.update_controls()
+    
     def update_controls(self):
         """Update control states."""
         has_pdf = self.pdf_document.status() == QPdfDocument.Status.Ready
@@ -172,9 +186,18 @@ class NativePDFViewer(QWidget):
     
     def go_to_page(self, page_number: int):
         """Go to a specific page."""
-        # QPdfView uses 0-based indexing, spinbox uses 1-based
-        self.pdf_view.pageNavigator().jump(page_number - 1, QUrl(), 1.0)
-        self.update_controls()
+        try:
+            # QPdfView uses 0-based indexing, spinbox uses 1-based
+            page_index = page_number - 1
+            page_navigator = self.pdf_view.pageNavigator()
+            
+            # Jump to the page with proper signature: jump(page, location, zoom)
+            # Use QPointF(0, 0) for top-left of the page
+            page_navigator.jump(page_index, QPointF(0, 0), 1.0)
+            self.update_controls()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to go to page {page_number}: {e}")
     
     def on_zoom_changed(self, zoom_text: str):
         """Handle zoom level change."""

@@ -268,14 +268,12 @@ class LogViewer(QGroupBox):
     def refresh_theme(self):
         """Refresh theme detection and update display."""
         self._is_dark_mode = self._detect_dark_mode()
-        # Note: Existing log messages won't change color until new ones are added
-        # For full refresh, we'd need to store messages and re-render them
+        self.rerender_all_messages()
     
     def filter_logs(self):
         """Filter logs based on selected level."""
-        # For now, this just affects new messages
-        # Full filtering would require storing all messages and re-displaying
         self.status_label.setText(f"Filter: {self.level_filter.currentText()}")
+        self.rerender_all_messages()
     
     def toggle_auto_scroll(self, enabled: bool):
         """Toggle auto-scroll functionality."""

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test script to examine ProcessingResult.to_dict() structure"""
+"""Test script to examine ProcessingResult.model_dump() structure"""
 
 import sys
 import json
@@ -7,13 +7,13 @@ from pathlib import Path
 from datetime import datetime
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.workflow import ProcessingResult, ProcessingStatus
 from src.core.models import Invoice, PurchaseOrder, ValidationResult, Item
 
 def create_sample_result():
-    """Create a sample ProcessingResult to test to_dict() structure."""
+    """Create a sample ProcessingResult to test model_dump() structure."""
     
     # Create sample items
     invoice_item = Item(
@@ -73,16 +73,16 @@ def create_sample_result():
     return result
 
 def main():
-    print("=== Testing ProcessingResult.to_dict() structure ===")
+    print("=== Testing ProcessingResult.model_dump() structure ===")
     
     # Create sample result
     result = create_sample_result()
     
     # Get dict representation
-    result_dict = result.to_dict()
+    result_dict = result.model_dump()
     
     # Print structure
-    print("\nFull to_dict() structure:")
+    print("\nFull model_dump() structure:")
     print(json.dumps(result_dict, indent=2, default=str))
     
     # Print key fields that GUI expects

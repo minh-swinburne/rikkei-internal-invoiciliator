@@ -2,10 +2,12 @@
 
 """
 
+from logging import Logger
 from pathlib import Path
 from datetime import datetime
+from typing import Any, Optional
 import pymupdf
-import os
+import json
 
 def get_timestamp():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -54,6 +56,29 @@ def get_project_root() -> Path:
     
     # Fallback to parent of src directory
     return current
+
+def load_json(json_path: Path, logger: Optional[Logger] = None) -> Any:
+    if json_path.exists():
+        # Try different encodings to handle problematic files
+        encodings_to_try = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252', 'iso-8859-1']
+        
+        for encoding in encodings_to_try:
+            try:
+                with open(json_path, 'r', encoding=encoding) as f:
+                    data = json.load(f)
+                if logger:
+                    logger.debug(f"Successfully loaded JSON with {encoding} encoding")
+                return data
+            except UnicodeDecodeError:
+                if logger:
+                    logger.debug(f"Failed to decode with {encoding}, trying next encoding")
+                continue
+            except json.JSONDecodeError as je:
+                if logger:
+                    logger.error(f"JSON decode error with {encoding}: {je}")
+                # If JSON is malformed, we can't use any encoding to fix it
+                break
+    return None
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Convert hex color to RGB tuple."""
