@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .utils import get_timestamp
+from .utils import get_timestamp, get_project_root
 
 
 def setup_logging(
@@ -29,11 +29,12 @@ def setup_logging(
     Returns:
         Configured logger instance
     """
-    # Create appropriate logs directory
+    # Create appropriate logs directory using project root for portability
+    project_root = get_project_root()
     if is_test:
-        logs_dir = Path("logs/tests")
+        logs_dir = project_root / "logs" / "tests"
     else:
-        logs_dir = Path("logs/app")
+        logs_dir = project_root / "logs" / "app"
     
     logs_dir.mkdir(parents=True, exist_ok=True)
     

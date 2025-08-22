@@ -353,11 +353,11 @@ class MainWindow(QMainWindow):
                 Path(sys.executable).parent / "assets" / "icon.png",
                 Path(sys.executable).parent / "icon.ico",
                 Path(sys.executable).parent / "icon.png",
-                # Current working directory
-                Path.cwd() / "assets" / "icon.ico",
-                Path.cwd() / "assets" / "icon.png",
-                Path.cwd() / "icon.ico",
-                Path.cwd() / "icon.png"
+                # Project root directory
+                self.project_root / "assets" / "icon.ico",
+                self.project_root / "assets" / "icon.png",
+                self.project_root / "icon.ico",
+                self.project_root / "icon.png"
             ]
             
             # Try each path until we find an icon
@@ -644,9 +644,9 @@ class MainWindow(QMainWindow):
     
     def load_settings(self):
         """Load settings into the UI."""
-        # Load directories from QSettings, with defaults as fallback
-        input_dir = self.settings.value("input_dir", "data/input")
-        output_dir = self.settings.value("output_dir", "data/output")
+        # Load directories from QSettings, with settings defaults as fallback
+        input_dir = self.settings.value("input_dir", settings.input_dir)
+        output_dir = self.settings.value("output_dir", settings.output_dir)
         pic_name = self.settings.value("pic_name", settings.stamp_pic_name)
         
         self.input_dir_edit.setText(input_dir)
@@ -658,6 +658,10 @@ class MainWindow(QMainWindow):
         output_full_path = self.get_absolute_path(output_dir)
         self.input_dir_edit.setToolTip(f"Full path: {input_full_path}")
         self.output_dir_edit.setToolTip(f"Full path: {output_full_path}")
+        
+        # Also update global settings with current values
+        settings.input_dir = input_dir
+        settings.output_dir = output_dir
     
     def reload_config_settings(self):
         """Reload only the settings that might have changed from config dialog."""
@@ -671,10 +675,19 @@ class MainWindow(QMainWindow):
             self.settings.setValue("geometry", self.saveGeometry())
             self.settings.setValue("windowState", self.saveState())
             
-            # Save directory paths
-            self.settings.setValue("input_dir", self.input_dir_edit.text())
-            self.settings.setValue("output_dir", self.output_dir_edit.text())
-            self.settings.setValue("pic_name", self.pic_name_edit.text())
+            # Save directory paths to both QSettings and global settings
+            input_dir = self.input_dir_edit.text()
+            output_dir = self.output_dir_edit.text()
+            pic_name = self.pic_name_edit.text()
+            
+            self.settings.setValue("input_dir", input_dir)
+            self.settings.setValue("output_dir", output_dir)
+            self.settings.setValue("pic_name", pic_name)
+            
+            # Update global settings for immediate use
+            settings.input_dir = input_dir
+            settings.output_dir = output_dir
+            settings.stamp_pic_name = pic_name
             
             self.settings.sync()
             self.logger.debug("Settings saved successfully")
@@ -814,6 +827,17 @@ class MainWindow(QMainWindow):
     
     def start_processing(self):
         """Start the PDF processing."""
+        # Validate API key first
+        if not settings.validate_api_key():
+            QMessageBox.warning(
+                self,
+                "API Key Required",
+                settings.get_api_key_error()
+            )
+            # Open settings dialog to help user configure API key
+            self.show_settings_dialog()
+            return
+        
         # Validate inputs - convert relative paths to absolute
         input_path_text = self.input_dir_edit.text().strip()
         input_dir = self.get_absolute_path(input_path_text)
@@ -958,7 +982,7 @@ class MainWindow(QMainWindow):
             folder_path = QFileDialog.getExistingDirectory(
                 self,
                 "Select folder containing JSON result files",
-                str(Path.cwd() / "data" / "output"),
+                str(self.project_root / "data" / "output"),
             )
             
             if not folder_path:

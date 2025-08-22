@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QColor, QIcon
 
-from src.utils import load_json
+from src.utils import load_json, get_project_root
 
 from ..logging_config import get_module_logger
 from .pdf_viewer import PDFViewer
@@ -683,7 +683,7 @@ class ResultDetailViewer(QDialog):
                     # Same directory as JSON with same base name
                     self.result_file.parent / f"{self.result_file.stem}.pdf",
                     # Input directory with same name
-                    Path("data/input") / f"{self.result_file.stem}.pdf",
+                    get_project_root() / "data" / "input" / f"{self.result_file.stem}.pdf",
                     # Try to extract original path from result file name pattern
                 ]
                 

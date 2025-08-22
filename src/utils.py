@@ -29,7 +29,7 @@ def get_relative_path(absolute_path: str | Path, base_path: str | Path = None) -
     try:
         abs_path = Path(absolute_path).resolve()
         if base_path is None:
-            base_path = Path.cwd()
+            base_path = get_project_root()
         else:
             base_path = Path(base_path).resolve()
         
@@ -44,7 +44,17 @@ def get_relative_path(absolute_path: str | Path, base_path: str | Path = None) -
         return str(absolute_path).replace('\\', '/')
 
 def get_project_root() -> Path:
-    """Get the project root directory."""
+    """Get the project root directory with PyInstaller compatibility."""
+    import sys
+    
+    # When running as PyInstaller bundle, use the executable directory
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller creates a temp folder and sets _MEIPASS to it
+        # But we want the directory where the .exe is located
+        exe_dir = Path(sys.executable).parent
+        return exe_dir
+    
+    # For development/normal Python execution
     # Find the directory containing main.py or .git
     current = Path(__file__).parent.parent  # Go up from src/ to project root
     

@@ -7,8 +7,9 @@ from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
-# Load .env file
+# Load .env file from current directory (will be updated in Settings __init__)
 load_dotenv(override=True)
 
 
@@ -29,6 +30,8 @@ class Settings(BaseSettings):
     llm_timeout_sec: int = Field(default=60, description="API timeout in seconds")
     
     # Application Configuration
+    input_dir: str = Field(default="data/input", description="Default input directory for PDF files")
+    output_dir: str = Field(default="data/output", description="Default output directory for results")
     log_level: str = Field(default="INFO", description="Logging level")
     max_file_size_mb: int = Field(default=10, description="Maximum file size in MB")
     concurrent_processing: bool = Field(default=True, description="Enable concurrent processing")
@@ -48,6 +51,30 @@ class Settings(BaseSettings):
     }
     
     def __init__(self, **kwargs):
+        # Load .env file from project root (avoiding circular import)
+        try:
+            import sys
+            if hasattr(sys, '_MEIPASS'):
+                # PyInstaller bundle
+                exe_dir = Path(sys.executable).parent
+                env_file_path = exe_dir / ".env"
+            else:
+                # Development mode - find project root
+                current = Path(__file__).parent.parent
+                markers = ['main.py', '.git', 'requirements.txt', 'gui_launcher.py']
+                for marker in markers:
+                    if (current / marker).exists():
+                        env_file_path = current / ".env"
+                        break
+                else:
+                    env_file_path = current / ".env"
+            
+            if env_file_path.exists():
+                load_dotenv(env_file_path, override=True)
+        except Exception:
+            # Fallback to current directory
+            load_dotenv(".env", override=True)
+        
         # Load from multiple environment variable names
         if 'llm_api_key' not in kwargs:
             kwargs['llm_api_key'] = (
@@ -72,12 +99,20 @@ class Settings(BaseSettings):
         
         super().__init__(**kwargs)
         
-        # Validate required fields
-        if not self.llm_api_key:
-            raise ValueError(
-                f"LLM API key is required. Set LLM_API_KEY or OPENROUTER_API_KEY environment variable.\n"
-                f"Available env vars: {list(os.environ.keys())[:10]}..."
-            )
+        # Note: API key validation is handled by the GUI - don't fail during initialization
+        # This allows the GUI to start and prompt the user to configure the API key
+    
+    def validate_api_key(self) -> bool:
+        """Check if API key is configured. Returns True if valid, False otherwise."""
+        return bool(self.llm_api_key and self.llm_api_key.strip())
+    
+    def get_api_key_error(self) -> str:
+        """Get a user-friendly error message for missing API key."""
+        return (
+            "LLM API key is required for processing invoices.\n"
+            "Please configure your API key in Advanced Settings.\n"
+            "You can get a free API key from OpenRouter.ai"
+        )
     
     @property
     def stamp_offset_xy(self) -> tuple[int, int]:

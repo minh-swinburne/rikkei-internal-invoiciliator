@@ -58,7 +58,8 @@ class BuildManager:
         """Clean up previous build artifacts."""
         print("🧹 Cleaning build directories...")
         
-        dirs_to_clean = [self.build_dir, self.dist_dir]
+        # dirs_to_clean = [self.build_dir, self.dist_dir]
+        dirs_to_clean = [self.build_dir]
         
         for dir_path in dirs_to_clean:
             if dir_path.exists():

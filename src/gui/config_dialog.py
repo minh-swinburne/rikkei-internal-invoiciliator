@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ..settings import settings
+from ..utils import get_project_root
 from ..logging_config import get_module_logger
 
 
@@ -259,7 +260,7 @@ class ConfigDialog(QDialog):
         env_layout.addWidget(env_info)
         
         # Show current .env path
-        env_path = Path(".env").absolute()
+        env_path = get_project_root() / ".env"
         env_path_label = QLabel(f"Location: {env_path}")
         env_path_label.setStyleSheet("font-family: monospace; font-size: 9pt;")
         env_layout.addWidget(env_path_label)
@@ -273,6 +274,8 @@ class ConfigDialog(QDialog):
         """Load current settings into the dialog."""
         # Store original settings
         self.original_settings = {
+            'input_dir': settings.input_dir,
+            'output_dir': settings.output_dir,
             'enable_stamping': settings.enable_stamping,
             'stamp_always_accept': settings.stamp_always_accept,
             'stamp_pic_name': settings.stamp_pic_name,
@@ -343,7 +346,7 @@ class ConfigDialog(QDialog):
     
     def save_to_env_file(self):
         """Save settings to .env file."""
-        env_path = Path(".env")
+        env_path = get_project_root() / ".env"
         
         # Create .env content
         env_content = f"""# LLM Configuration
@@ -354,9 +357,13 @@ LLM_MAX_RETRIES={settings.llm_max_retries}
 LLM_TIMEOUT_SECONDS={settings.llm_timeout_sec}
 
 # Application Settings
+INPUT_DIR={settings.input_dir}
+OUTPUT_DIR={settings.output_dir}
 LOG_LEVEL={settings.log_level}
 MAX_FILE_SIZE_MB={settings.max_file_size_mb}
 CONCURRENT_PROCESSING={settings.concurrent_processing}
+
+# PDF Stamping Settings
 ENABLE_STAMPING={settings.enable_stamping}
 STAMP_PIC_NAME={settings.stamp_pic_name}
 STAMP_ALWAYS_ACCEPT={settings.stamp_always_accept}

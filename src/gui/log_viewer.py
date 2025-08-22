@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QTextCursor, QFont, QColor, QTextCharFormat, QPalette
 
 from ..logging_config import get_module_logger
+from ..utils import get_project_root
 
 try:
     import darkdetect
@@ -308,7 +309,7 @@ class LogViewer(QGroupBox):
         """Open the log folder and highlight the current log file if possible."""
         try:
             # Get the log folder path
-            log_folder = Path.cwd() / "logs" / "app"
+            log_folder = get_project_root() / "logs" / "app"
             
             if not log_folder.exists():
                 QMessageBox.warning(
