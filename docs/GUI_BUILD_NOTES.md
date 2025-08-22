@@ -2,16 +2,40 @@
 
 ## ✅ **COMPLETED TASKS**
 
+### 3. ✅ Add guide for getting API key
+- **Status**: COMPLETE
+- **Implementation**: Comprehensive OpenRouter API key acquisition guide
+- **Features**:
+  - Step-by-step instructions for OpenRouter signup
+  - Detailed API key creation process with screenshots
+  - Credit limit recommendations for new users
+  - Integration into comprehensive USER_GUIDE.md
+  - Warning labels in LLM Configuration tab
+
 ### 4. ✅ Integrate guide to app
 - **Status**: COMPLETE
-- **Implementation**: Created `src/gui/help_dialog.py` with dynamic content parsing
+- **Implementation**: Created `src/gui/help_dialog.py` with enhanced markdown parsing
 - **Features**:
   - F1 keyboard shortcut to open help
   - "?" button in main interface for quick access
   - Help menu item: "User Guide..."
-  - Parses USER_GUIDE.txt automatically
+  - Comprehensive markdown USER_GUIDE.md parsing
+  - Enhanced markdown-to-HTML conversion
   - Fallback content when files missing
   - External file opening support
+  - User-friendly and technical documentation in one file
+
+### 6. ✅ Comprehensive User Documentation
+- **Status**: COMPLETE
+- **Implementation**: Created `src/assets/USER_GUIDE.md` with complete documentation
+- **Features**:
+  - Non-technical user-friendly introduction
+  - Step-by-step setup and usage instructions
+  - Advanced user section with technical details
+  - OpenRouter API key acquisition guide
+  - Troubleshooting and optimization tips
+  - Technology stack and architecture explanation
+  - Security considerations and best practices
 
 ## 🔄 **IN PROGRESS TASKS**
 
@@ -37,15 +61,6 @@
   - Cross-platform: Socket binding or file locking
   - Show existing window if second instance attempted
 - **Benefits**: Prevents confusion, improves resource usage
-
-### 3. ⏳ Add guide for getting API key
-- **Status**: PLANNED  
-- **Components Needed**:
-  - API key acquisition tutorial (OpenRouter signup process)
-  - Step-by-step screenshots or instructions
-  - Integration into help system
-  - Link to OpenRouter website with referral/instructions
-- **Location**: Add as section in USER_GUIDE.txt
 
 ### 5. ⏳ Remove need to manually edit .env --> Only configure via app settings
 - **Status**: PLANNED
@@ -127,12 +142,11 @@ pyinstaller \
 1. **HIGH**: Complete icon system (Task 1) - Visual polish and professionalism
 2. **HIGH**: API configuration dialog (Task 5) - Major UX improvement 
 3. **MEDIUM**: Single instance management (Task 2) - Polish feature
-4. **LOW**: Enhanced API key guide (Task 3) - Documentation improvement
 
 ## 📝 **NOTES**
 
-- Task 4 (integrate guide) is complete and working well
+- Tasks 3, 4, and 6 (documentation) are complete and working excellently
 - Icon system foundation is solid, just needs proper ICO file
-- API configuration will be the biggest UX improvement
+- API configuration will be the biggest remaining UX improvement
 - Single instance is nice-to-have but not critical for v1.0
-- All tasks support the goal of professional, user-friendly application
+- All completed tasks support the goal of professional, user-friendly application

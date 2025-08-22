@@ -2,6 +2,7 @@
 
 """
 
+import re
 from logging import Logger
 from pathlib import Path
 from datetime import datetime
@@ -150,3 +151,120 @@ def normalize_path_display(path: str | Path) -> str:
         Path string with forward slashes
     """
     return str(path).replace('\\', '/')
+
+
+def convert_markdown_to_html(text: str) -> str:
+    """
+    Convert basic markdown elements to HTML.
+    
+    This function handles common markdown formatting like bold, italic, code,
+    links, and horizontal rules. Used as a fallback when native markdown
+    rendering is not available.
+    
+    Args:
+        text: Markdown text to convert
+        
+    Returns:
+        HTML formatted text
+    """
+    if not text:
+        return ""
+    
+    # Bold text **text** or __text__
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'__(.*?)__', r'<strong>\1</strong>', text)
+    
+    # Italic text *text* or _text_
+    text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', text)
+    text = re.sub(r'_(.*?)_', r'<em>\1</em>', text)
+    
+    # Code `code`
+    text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+    
+    # Links [text](url)
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
+    
+    # Remove markdown horizontal rules
+    text = re.sub(r'^---+$', '<hr>', text, flags=re.MULTILINE)
+    
+    return text
+
+
+def format_markdown_code_block(paragraph: str) -> str:
+    """
+    Format a markdown code block for HTML display.
+    
+    Args:
+        paragraph: Paragraph containing code block
+        
+    Returns:
+        Formatted HTML code block
+    """
+    lines = paragraph.split('\n')
+    code_lines = []
+    
+    for line in lines:
+        if not line.strip().startswith('```'):
+            code_lines.append(line)
+    
+    code_content = '\n'.join(code_lines)
+    return f'<pre><code>{code_content}</code></pre>'
+
+
+def is_markdown_list_paragraph(paragraph: str) -> bool:
+    """
+    Check if a paragraph contains a markdown list.
+    
+    Args:
+        paragraph: Text paragraph to check
+        
+    Returns:
+        True if paragraph contains list items
+    """
+    lines = paragraph.strip().split('\n')
+    if len(lines) < 2:
+        return False
+    
+    # Check if most lines start with numbers or dashes
+    list_lines = 0
+    for line in lines:
+        stripped = line.strip()
+        if (stripped.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '-', '•', '*')) or
+            re.match(r'^\d+\.', stripped)):
+            list_lines += 1
+    
+    return list_lines >= len(lines) * 0.6  # At least 60% of lines are list items
+
+
+def format_markdown_list_to_html(paragraph: str) -> str:
+    """
+    Convert a markdown list paragraph to HTML.
+    
+    Args:
+        paragraph: Paragraph containing list items
+        
+    Returns:
+        HTML formatted list
+    """
+    lines = paragraph.strip().split('\n')
+    list_items = []
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            # Remove common list prefixes
+            for prefix in ['1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '-', '•', '*']:
+                if stripped.startswith(prefix):
+                    stripped = stripped[len(prefix):].strip()
+                    break
+            
+            # Also handle numbered lists
+            stripped = re.sub(r'^\d+\.\s*', '', stripped)
+            
+            if stripped:
+                list_items.append(f"<li>{stripped}</li>")
+    
+    if list_items:
+        return f"<ul>{''.join(list_items)}</ul>"
+    else:
+        return f"<p>{paragraph}</p>"

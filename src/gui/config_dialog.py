@@ -32,7 +32,7 @@ class ConfigDialog(QDialog):
     
     def setup_ui(self):
         """Set up the user interface."""
-        self.setWindowTitle("Application Settings")
+        self.setWindowTitle("Invoice Reconciliator - Settings")
         self.setMinimumSize(600, 500)
         self.resize(700, 600)
         
@@ -58,20 +58,24 @@ class ConfigDialog(QDialog):
         button_layout = QHBoxLayout()
         
         test_btn = QPushButton("Test Connection")
+        test_btn.setToolTip("Test the API connection to verify your settings work")
         test_btn.clicked.connect(self.test_llm_connection)
         button_layout.addWidget(test_btn)
         
         button_layout.addStretch()
         
         save_btn = QPushButton("Save")
+        save_btn.setToolTip("Save all settings and optionally write to .env file")
         save_btn.clicked.connect(self.save_settings)
         button_layout.addWidget(save_btn)
         
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setToolTip("Cancel changes and close settings dialog")
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
         
         reset_btn = QPushButton("Reset to Defaults")
+        reset_btn.setToolTip("Reset all settings to default values")
         reset_btn.clicked.connect(self.reset_to_defaults)
         button_layout.addWidget(reset_btn)
         
@@ -88,18 +92,22 @@ class ConfigDialog(QDialog):
         
         # Enable stamping
         self.enable_stamping_cb = QCheckBox("Enable PDF Stamping")
+        self.enable_stamping_cb.setToolTip("Add approval stamps to processed PDF files")
         pdf_layout.addRow(self.enable_stamping_cb)
         
         # Always accept
         self.always_accept_cb = QCheckBox("Always Accept (Auto-approve all)")
+        self.always_accept_cb.setToolTip("Automatically approve all invoices without validation (use with caution)")
         pdf_layout.addRow(self.always_accept_cb)
         
         # PIC Name
         self.pic_name_edit = QLineEdit()
+        self.pic_name_edit.setToolTip("Name of person in charge to include on PDF stamps")
         pdf_layout.addRow("PIC Name:", self.pic_name_edit)
         
         # Stamp position
         self.stamp_position_combo = QComboBox()
+        self.stamp_position_combo.setToolTip("Where to place approval stamps on PDF pages")
         self.stamp_position_combo.addItems([
             "top-left", "top-right", "bottom-left", "bottom-right"
         ])
@@ -113,17 +121,20 @@ class ConfigDialog(QDialog):
         
         # Log level
         self.log_level_combo = QComboBox()
+        self.log_level_combo.setToolTip("Detail level for application logs (DEBUG shows most detail)")
         self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
         general_layout.addRow("Log Level:", self.log_level_combo)
         
         # Max file size
         self.max_file_size_spin = QSpinBox()
+        self.max_file_size_spin.setToolTip("Maximum PDF file size to process (larger files may timeout)")
         self.max_file_size_spin.setRange(1, 100)
         self.max_file_size_spin.setSuffix(" MB")
         general_layout.addRow("Max File Size:", self.max_file_size_spin)
         
         # Concurrent processing
         self.concurrent_processing_cb = QCheckBox("Enable Concurrent Processing")
+        self.concurrent_processing_cb.setToolTip("Process multiple files simultaneously for faster performance")
         general_layout.addRow(self.concurrent_processing_cb)
         
         layout.addWidget(general_group)
@@ -136,35 +147,59 @@ class ConfigDialog(QDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         
+        # Warning message
+        warning_label = QLabel(
+            "⚠️ Warning: Only change settings below if you know what you're doing!\n"
+            "Most users only need to set the API Key. Other settings are pre-configured for optimal performance."
+        )
+        warning_label.setStyleSheet(
+            "QLabel { "
+            "background-color: #fff3cd; "
+            "border: 1px solid #ffeaa7; "
+            "border-radius: 4px; "
+            "padding: 8px; "
+            "color: #856404; "
+            "font-weight: bold; "
+            "}"
+        )
+        warning_label.setWordWrap(True)
+        layout.addWidget(warning_label)
+        
         # LLM Configuration group
         llm_group = QGroupBox("LLM Configuration")
         llm_layout = QFormLayout(llm_group)
         
         # Provider selection (for future use)
         self.provider_combo = QComboBox()
+        self.provider_combo.setToolTip("AI service provider (currently supports OpenRouter)")
         self.provider_combo.addItems(["OpenRouter", "OpenAI", "Other"])
         llm_layout.addRow("Provider:", self.provider_combo)
         
         # API Key
         self.api_key_edit = QLineEdit()
+        self.api_key_edit.setToolTip("Your OpenRouter API key (required for processing)")
         self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         llm_layout.addRow("API Key:", self.api_key_edit)
         
         # Model
         self.model_edit = QLineEdit()
+        self.model_edit.setToolTip("AI model to use (default: google/gemini-2.0-flash-001)")
         llm_layout.addRow("Model:", self.model_edit)
         
         # Base URL
         self.base_url_edit = QLineEdit()
+        self.base_url_edit.setToolTip("API endpoint URL (keep default unless using custom service)")
         llm_layout.addRow("Base URL:", self.base_url_edit)
         
         # Max retries
         self.max_retries_spin = QSpinBox()
+        self.max_retries_spin.setToolTip("Number of times to retry failed API requests")
         self.max_retries_spin.setRange(1, 10)
         llm_layout.addRow("Max Retries:", self.max_retries_spin)
         
         # Timeout
         self.timeout_spin = QSpinBox()
+        self.timeout_spin.setToolTip("How long to wait for API responses before timing out")
         self.timeout_spin.setRange(10, 300)
         self.timeout_spin.setSuffix(" seconds")
         llm_layout.addRow("Timeout:", self.timeout_spin)

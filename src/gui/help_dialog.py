@@ -2,18 +2,27 @@
 Help dialog for displaying user guide and documentation.
 """
 import re
+import platform
+import subprocess
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
-    QTextEdit, QSplitter, QPushButton, QLabel, QFrame, QMessageBox
+    QTextEdit, QSplitter, QPushButton, QLabel, QFrame, QMessageBox,
+    QSizePolicy
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIcon
 
 from ..logging_config import get_module_logger
-from ..utils import get_project_root
+from ..utils import (
+    get_project_root, 
+    convert_markdown_to_html,
+    format_markdown_code_block,
+    is_markdown_list_paragraph, 
+    format_markdown_list_to_html
+)
 
 
 class HelpSection:
@@ -31,37 +40,81 @@ class HelpSection:
 
 
 class HelpParser:
-    """Parser for converting text-based user guide to structured help content."""
+    """Parser for converting markdown user guide to structured help content."""
     
     def __init__(self):
         self.logger = get_module_logger('gui.help_parser')
+        self.document_title: Optional[str] = None
     
-    def parse_file(self, file_path: Path) -> List[HelpSection]:
-        """Parse a text file into structured help sections."""
+    def parse_file(self, file_path: Path) -> Tuple[List[HelpSection], Optional[str]]:
+        """
+        Parse a markdown file into structured help sections.
+        
+        Returns:
+            Tuple of (sections list, document title from h1 header)
+        """
         try:
             if not file_path.exists():
                 self.logger.error(f"Help file not found: {file_path}")
-                return []
+                return [], None
             
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            return self.parse_content(content)
+            sections, title = self.parse_content(content)
+            return sections, title
             
         except Exception as e:
             self.logger.error(f"Error parsing help file: {e}")
-            return []
+            return [], None
     
-    def parse_content(self, content: str) -> List[HelpSection]:
-        """Parse text content into help sections."""
+    def parse_content(self, content: str) -> Tuple[List[HelpSection], Optional[str]]:
+        """
+        Parse markdown content into help sections.
+        Only h2 headers (##) become main sections, everything else goes into content.
+        
+        Returns:
+            Tuple of (sections list, document title from h1 header)
+        """
         lines = content.split('\n')
         sections = []
         current_section = None
         current_content = []
+        document_title = None
         
-        for line in lines:
-            # Check for section headers (lines with === or --- underneath)
-            if self._is_main_header(lines, lines.index(line) if line in lines else -1):
+        for i, line in enumerate(lines):
+            # Check for h1 header (document title)
+            if line.strip().startswith('# ') and not line.strip().startswith('## '):
+                if document_title is None:  # Only take the first h1
+                    document_title = line.strip()[2:].strip()
+                # h1 lines are not included in content
+                continue
+                
+            # Check for h2 headers (main sections)
+            elif line.strip().startswith('## '):
+                # Save previous section
+                if current_section:
+                    current_section.content = '\n'.join(current_content).strip()
+                    sections.append(current_section)
+                
+                # Start new section
+                title = line.strip()[3:].strip()
+                current_section = HelpSection(title, "", 2)
+                current_content = []
+                
+            # Check for horizontal rule separators (use as section breaks)
+            elif line.strip() == '---':
+                # Save current section if we have one
+                if current_section:
+                    current_section.content = '\n'.join(current_content).strip()
+                    sections.append(current_section)
+                    current_section = None
+                    current_content = []
+                # Don't include the separator line itself
+                continue
+                
+            # Check for text file headers (lines with === or --- underneath) - for compatibility
+            elif self._is_main_header(lines, i):
                 # Save previous section
                 if current_section:
                     current_section.content = '\n'.join(current_content).strip()
@@ -71,22 +124,8 @@ class HelpParser:
                 current_section = HelpSection(line.strip(), "", 1)
                 current_content = []
                 
-            elif self._is_sub_header(line):
-                # Handle subsections
-                if current_section:
-                    # Save content so far to current section
-                    if current_content:
-                        current_section.content = '\n'.join(current_content).strip()
-                        current_content = []
-                    
-                    # Create subsection
-                    subsection_title = line.strip().rstrip('-').strip()
-                    subsection = HelpSection(subsection_title, "", 2)
-                    current_section.add_subsection(subsection)
-                    # The subsection content will be collected until next header
-                    
             else:
-                # Regular content line
+                # Regular content line (including h3, h4, etc.)
                 current_content.append(line)
         
         # Don't forget the last section
@@ -94,7 +133,7 @@ class HelpParser:
             current_section.content = '\n'.join(current_content).strip()
             sections.append(current_section)
         
-        return sections
+        return sections, document_title
     
     def _is_main_header(self, lines: List[str], index: int) -> bool:
         """Check if this line is a main header (followed by ===)."""
@@ -109,14 +148,6 @@ class HelpParser:
                 next_line and 
                 len(set(next_line)) == 1 and 
                 next_line[0] == '=')
-    
-    def _is_sub_header(self, line: str) -> bool:
-        """Check if this line is a subheader (ends with many dashes)."""
-        stripped = line.strip()
-        # Subheaders typically end with --- or -----
-        return (stripped and 
-                stripped.endswith('---') and 
-                len(stripped) > 10)
 
 
 class HelpDialog(QDialog):
@@ -126,6 +157,7 @@ class HelpDialog(QDialog):
         super().__init__(parent)
         self.logger = get_module_logger('gui.help_dialog')
         self.sections: List[HelpSection] = []
+        self.document_title: Optional[str] = None
         
         self.setup_ui()
         self.load_help_content()
@@ -140,14 +172,14 @@ class HelpDialog(QDialog):
         # Main layout
         layout = QVBoxLayout(self)
         
-        # Title
-        title_label = QLabel("Invoice Reconciliator - User Guide")
+        # Title - will be updated after content is loaded
+        self.title_label = QLabel("Invoice Reconciliator - User Guide")
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
-        title_label.setFont(title_font)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_label)
+        self.title_label.setFont(title_font)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.title_label)
         
         # Separator
         separator = QFrame()
@@ -157,6 +189,7 @@ class HelpDialog(QDialog):
         
         # Main content area
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(splitter)
         
         # Left side: Table of contents
@@ -170,7 +203,13 @@ class HelpDialog(QDialog):
         # Right side: Content display
         self.content_display = QTextEdit()
         self.content_display.setReadOnly(True)
-        self.content_display.setFont(QFont("Consolas", 10))  # Monospace font for better text display
+        
+        # Use a more readable font for general content
+        content_font = QFont()
+        content_font.setFamily("Segoe UI")  # Modern, readable font on Windows
+        content_font.setPointSize(10)
+        self.content_display.setFont(content_font)
+        
         splitter.addWidget(self.content_display)
         
         # Set splitter proportions
@@ -199,6 +238,7 @@ class HelpDialog(QDialog):
             # Try to find the user guide file
             project_root = get_project_root()
             possible_paths = [
+                project_root / "src" / "assets" / "USER_GUIDE.md",  # New comprehensive guide
                 project_root / "dist" / "USER_GUIDE.txt",
                 project_root / "USER_GUIDE.txt",
                 project_root / "docs" / "USER_GUIDE.txt",
@@ -213,15 +253,19 @@ class HelpDialog(QDialog):
             
             if user_guide_path:
                 parser = HelpParser()
-                self.sections = parser.parse_file(user_guide_path)
+                self.sections, self.document_title = parser.parse_file(user_guide_path)
                 self.logger.info(f"Loaded help content from: {user_guide_path}")
+                if self.document_title:
+                    self.logger.info(f"Document title: {self.document_title}")
             else:
                 self.logger.warning("No user guide file found, using fallback content")
                 self.sections = self.create_fallback_content()
+                self.document_title = None
                 
         except Exception as e:
             self.logger.error(f"Error loading help content: {e}")
             self.sections = self.create_fallback_content()
+            self.document_title = None
     
     def create_fallback_content(self) -> List[HelpSection]:
         """Create fallback help content if user guide file is not found."""
@@ -289,15 +333,15 @@ For additional help, contact your IT support team.
         """Populate the table of contents tree."""
         self.toc_tree.clear()
         
+        # Update title label and window title if we have a document title
+        if self.document_title:
+            self.title_label.setText(self.document_title)
+            self.setWindowTitle(self.document_title)
+        
         for section in self.sections:
-            # Create main section item
+            # Create main section item (only h2 sections)
             section_item = QTreeWidgetItem(self.toc_tree, [section.title])
             section_item.setData(0, Qt.ItemDataRole.UserRole, section)
-            
-            # Add subsections if any
-            for subsection in section.subsections:
-                subsection_item = QTreeWidgetItem(section_item, [subsection.title])
-                subsection_item.setData(0, Qt.ItemDataRole.UserRole, subsection)
         
         # Expand all items
         self.toc_tree.expandAll()
@@ -318,89 +362,19 @@ For additional help, contact your IT support team.
             self.logger.error(f"Error displaying section: {e}")
     
     def display_section_content(self, section: HelpSection):
-        """Display the content of a help section."""
+        """Display the content of a help section using native markdown rendering."""
         try:
+            # Add header title
             content = f"<h2>{section.title}</h2>\n\n"
-            
-            # Convert plain text to basic HTML formatting
-            formatted_content = self.format_text_content(section.content)
-            content += formatted_content
-            
-            # Add subsections if this is a main section with subsections
-            if section.subsections:
-                for subsection in section.subsections:
-                    content += f"\n\n<h3>{subsection.title}</h3>\n"
-                    content += self.format_text_content(subsection.content)
-            
-            self.content_display.setHtml(content)
-            
+            content += section.content.strip()
+
+            # Use native markdown rendering - much simpler and better!
+            self.content_display.setMarkdown(content)
+
         except Exception as e:
-            self.logger.error(f"Error formatting section content: {e}")
+            self.logger.error(f"Error displaying section content: {e}")
+            # Fallback to plain text if markdown fails
             self.content_display.setPlainText(section.content)
-    
-    def format_text_content(self, text: str) -> str:
-        """Convert plain text to basic HTML formatting."""
-        if not text:
-            return ""
-        
-        # Split into paragraphs
-        paragraphs = text.split('\n\n')
-        formatted_paragraphs = []
-        
-        for paragraph in paragraphs:
-            if not paragraph.strip():
-                continue
-            
-            # Check if it's a list
-            if self._is_list_paragraph(paragraph):
-                formatted_paragraphs.append(self._format_list(paragraph))
-            else:
-                # Regular paragraph
-                formatted_text = paragraph.replace('\n', '<br>')
-                formatted_paragraphs.append(f"<p>{formatted_text}</p>")
-        
-        return '\n'.join(formatted_paragraphs)
-    
-    def _is_list_paragraph(self, paragraph: str) -> bool:
-        """Check if a paragraph is a list."""
-        lines = paragraph.strip().split('\n')
-        if len(lines) < 2:
-            return False
-        
-        # Check if most lines start with numbers or dashes
-        list_lines = 0
-        for line in lines:
-            stripped = line.strip()
-            if (stripped.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '-', '•', '*')) or
-                re.match(r'^\d+\.', stripped)):
-                list_lines += 1
-        
-        return list_lines >= len(lines) * 0.6  # At least 60% of lines are list items
-    
-    def _format_list(self, paragraph: str) -> str:
-        """Format a paragraph as an HTML list."""
-        lines = paragraph.strip().split('\n')
-        list_items = []
-        
-        for line in lines:
-            stripped = line.strip()
-            if stripped:
-                # Remove common list prefixes
-                for prefix in ['1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '-', '•', '*']:
-                    if stripped.startswith(prefix):
-                        stripped = stripped[len(prefix):].strip()
-                        break
-                
-                # Also handle numbered lists
-                stripped = re.sub(r'^\d+\.\s*', '', stripped)
-                
-                if stripped:
-                    list_items.append(f"<li>{stripped}</li>")
-        
-        if list_items:
-            return f"<ul>{''.join(list_items)}</ul>"
-        else:
-            return f"<p>{paragraph}</p>"
     
     def open_user_guide_file(self):
         """Open the user guide file in the system's default text editor."""
@@ -411,6 +385,7 @@ For additional help, contact your IT support team.
             # Try to find the user guide file
             project_root = get_project_root()
             possible_paths = [
+                project_root / "src" / "assets" / "USER_GUIDE.md",  # New comprehensive guide
                 project_root / "dist" / "USER_GUIDE.txt",
                 project_root / "USER_GUIDE.txt",
                 project_root / "docs" / "USER_GUIDE.txt"

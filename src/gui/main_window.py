@@ -386,7 +386,7 @@ class MainWindow(QMainWindow):
         """Set up the user interface."""
         self.setWindowTitle("Invoice Reconciliator")
         self.setMinimumSize(800, 600)
-        self.resize(800, 600)
+        self.resize(800, 700)
         
         # Set window icon with PyInstaller compatibility
         self.set_application_icon()
@@ -440,9 +440,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Input Directory:"), 0, 0)
         self.input_dir_edit = QLineEdit()
         self.input_dir_edit.setPlaceholderText("Select folder containing PDF files...")
+        self.input_dir_edit.setToolTip("Folder containing merged PDF files (invoice + purchase order)")
         layout.addWidget(self.input_dir_edit, 0, 1)
         
         input_browse_btn = QPushButton("Browse")
+        input_browse_btn.setToolTip("Select folder containing PDF files to process")
         input_browse_btn.clicked.connect(self.browse_input_directory)
         layout.addWidget(input_browse_btn, 0, 2)
         
@@ -450,9 +452,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Output Directory:"), 1, 0)
         self.output_dir_edit = QLineEdit()
         self.output_dir_edit.setPlaceholderText("Select output folder...")
+        self.output_dir_edit.setToolTip("Folder where processed files and reports will be saved")
         layout.addWidget(self.output_dir_edit, 1, 1)
         
         output_browse_btn = QPushButton("Browse")
+        output_browse_btn.setToolTip("Select folder where processed files will be saved")
         output_browse_btn.clicked.connect(self.browse_output_directory)
         layout.addWidget(output_browse_btn, 1, 2)
         
@@ -460,10 +464,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("PIC Name:"), 2, 0)
         self.pic_name_edit = QLineEdit()
         self.pic_name_edit.setText(settings.stamp_pic_name)
+        self.pic_name_edit.setToolTip("Person in charge name for PDF stamping")
         layout.addWidget(self.pic_name_edit, 2, 1, 1, 2)
         
         # Settings button
         settings_btn = QPushButton("Advanced Settings...")
+        settings_btn.setToolTip("Configure API keys, processing options, and advanced settings")
         settings_btn.clicked.connect(self.show_settings_dialog)
         layout.addWidget(settings_btn, 3, 0, 1, 3)
         
@@ -497,16 +503,19 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         
         self.start_button = QPushButton("Start Processing")
+        self.start_button.setToolTip("Begin processing all PDF files in the input directory")
         self.start_button.clicked.connect(self.start_processing)
         button_layout.addWidget(self.start_button)
         
         self.stop_button = QPushButton("Stop")
+        self.stop_button.setToolTip("Stop processing and cancel remaining files")
         self.stop_button.clicked.connect(self.stop_processing)
         self.stop_button.setEnabled(False)
         button_layout.addWidget(self.stop_button)
         
         # Pause/Resume button for processing workflow
         self.pause_processing_btn = QPushButton("Pause Processing")
+        self.pause_processing_btn.setToolTip("Pause processing - files in progress will complete")
         self.pause_processing_btn.clicked.connect(self.toggle_processing_pause)
         self.pause_processing_btn.setEnabled(False)  # Only enabled during processing
         button_layout.addWidget(self.pause_processing_btn)
@@ -548,6 +557,7 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         
         refresh_btn = QPushButton("Refresh Results")
+        refresh_btn.setToolTip("Reload processing results from the output directory")
         refresh_btn.clicked.connect(self.refresh_results)
         button_layout.addWidget(refresh_btn)
         
@@ -557,10 +567,12 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(import_button)
         
         export_btn = QPushButton("Export Results")
+        export_btn.setToolTip("Export processing results to Excel or CSV file")
         export_btn.clicked.connect(self.export_results)
         button_layout.addWidget(export_btn)
         
         open_output_btn = QPushButton("Open Output Folder")
+        open_output_btn.setToolTip("Open the output folder in file explorer")
         open_output_btn.clicked.connect(self.open_output_folder)
         button_layout.addWidget(open_output_btn)
         
@@ -1281,6 +1293,7 @@ class MainWindow(QMainWindow):
             
             # View button (always available)
             view_btn = QPushButton("View")
+            view_btn.setToolTip("View detailed processing results and validation report")
             view_btn.setMaximumHeight(25)
             view_btn.clicked.connect(lambda checked, r=row_count: self.view_result_details(r))
             actions_layout.addWidget(view_btn)
@@ -1289,6 +1302,7 @@ class MainWindow(QMainWindow):
             pdf_path = result.get('processed_pdf_path') or result.get('pdf_path')
             if pdf_path:
                 pdf_btn = QPushButton("PDF")
+                pdf_btn.setToolTip("Open the processed PDF file")
                 pdf_btn.setMaximumHeight(25)
                 pdf_btn.clicked.connect(lambda checked, r=row_count: self.open_pdf(r))
                 actions_layout.addWidget(pdf_btn)
@@ -1297,6 +1311,7 @@ class MainWindow(QMainWindow):
             # Retry button (if failed)
             if status in ['FAILED', 'failed']:
                 retry_btn = QPushButton("Retry")
+                retry_btn.setToolTip("Retry processing this failed file")
                 retry_btn.setMaximumHeight(25)
                 retry_btn.setStyleSheet("background-color: #FF9800; color: white;")
                 retry_btn.clicked.connect(lambda checked, r=row_count: self.retry_processing(r))

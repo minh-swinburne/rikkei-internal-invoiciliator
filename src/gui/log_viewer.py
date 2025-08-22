@@ -96,6 +96,7 @@ class LogViewer(QGroupBox):
         # Log level filter
         control_layout.addWidget(QLabel("Level:"))
         self.level_filter = QComboBox()
+        self.level_filter.setToolTip("Filter logs by minimum level (DEBUG shows all messages)")
         self.level_filter.addItems(["ALL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
         self.level_filter.setCurrentText("INFO")
         self.level_filter.currentTextChanged.connect(self.filter_logs)
@@ -105,6 +106,7 @@ class LogViewer(QGroupBox):
         
         # Auto-scroll checkbox
         self.auto_scroll_cb = QCheckBox("Auto-scroll")
+        self.auto_scroll_cb.setToolTip("Automatically scroll to show newest log messages")
         self.auto_scroll_cb.setChecked(True)
         self.auto_scroll_cb.toggled.connect(self.toggle_auto_scroll)
         control_layout.addWidget(self.auto_scroll_cb)
@@ -128,21 +130,25 @@ class LogViewer(QGroupBox):
         
         # Copy all logs button
         copy_all_btn = QPushButton("Copy All Logs")
+        copy_all_btn.setToolTip("Copy all displayed logs to clipboard for sharing")
         copy_all_btn.clicked.connect(self.copy_all_logs)
         button_layout.addWidget(copy_all_btn)
         
         # Clear button
         clear_btn = QPushButton("Clear Logs")
+        clear_btn.setToolTip("Clear the log display (does not delete saved log files)")
         clear_btn.clicked.connect(self.clear)
         button_layout.addWidget(clear_btn)
         
         # Export button
         export_btn = QPushButton("Export Logs")
+        export_btn.setToolTip("Save current logs to a text file")
         export_btn.clicked.connect(self.export_logs)
         button_layout.addWidget(export_btn)
         
         # Open log folder button
         open_folder_btn = QPushButton("Open Log Folder")
+        open_folder_btn.setToolTip("Open the logs folder in file explorer")
         open_folder_btn.clicked.connect(self.open_log_folder)
         button_layout.addWidget(open_folder_btn)
         
