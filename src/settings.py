@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         description="Base URL for LLM API"
     )
     llm_model: str = Field(
-        default="anthropic/claude-3.5-sonnet:beta",
+        default="google/gemini-2.0-flash-001",
         description="Model identifier for LLM provider"
     )
     llm_max_retries: int = Field(default=3, description="Maximum retry attempts for API calls")
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     stamp_pic_name: str = Field(default="Jane Smith", description="Name of PIC for PDF stamp")
     stamp_always_accept: bool = Field(default=True, description="Always stamp invoices as accepted")
     stamp_position: str = Field(default="bottom-right", description="Position for PDF stamps")
-    stamp_offset: str = Field(default="20,20", description="Horizontal,Vertical offset for stamp position")
+    stamp_offset: str = Field(default="20,200", description="Horizontal,Vertical offset for stamp position")
     
     model_config = {
         "env_file": ".env",
@@ -94,7 +94,7 @@ class Settings(BaseSettings):
             kwargs['llm_model'] = (
                 os.getenv('LLM_MODEL') or 
                 os.getenv('OPENROUTER_MODEL') or 
-                "anthropic/claude-3.5-sonnet:beta"
+                "google/gemini-2.0-flash-001"
             )
         
         super().__init__(**kwargs)

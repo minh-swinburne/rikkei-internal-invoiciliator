@@ -116,8 +116,8 @@ class ConfigDialog(QDialog):
         
         # Stamp offset
         self.stamp_offset_edit = QLineEdit()
-        self.stamp_offset_edit.setToolTip("Horizontal,Vertical offset in pixels (e.g., '20,20' for 20px right and 20px down)")
-        self.stamp_offset_edit.setPlaceholderText("x,y (e.g., 20,20)")
+        self.stamp_offset_edit.setToolTip("Horizontal,Vertical offset in pixels (e.g., '20,200' for 20px right and 20px down)")
+        self.stamp_offset_edit.setPlaceholderText("x,y (e.g., 20,200)")
         pdf_layout.addRow("Stamp Offset:", self.stamp_offset_edit)
         
         layout.addWidget(pdf_group)
@@ -394,7 +394,7 @@ STAMP_OFFSET={settings.stamp_offset}
             self.always_accept_cb.setChecked(True)
             self.pic_name_edit.setText("Jane Smith")
             self.stamp_position_combo.setCurrentText("bottom-right")
-            self.stamp_offset_edit.setText("20,20")
+            self.stamp_offset_edit.setText("20,200")
             self.log_level_combo.setCurrentText("INFO")
             self.max_file_size_spin.setValue(10)
             self.concurrent_processing_cb.setChecked(True)
