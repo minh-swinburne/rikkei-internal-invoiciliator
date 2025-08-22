@@ -113,6 +113,12 @@ class ConfigDialog(QDialog):
         ])
         pdf_layout.addRow("Stamp Position:", self.stamp_position_combo)
         
+        # Stamp offset
+        self.stamp_offset_edit = QLineEdit()
+        self.stamp_offset_edit.setToolTip("Horizontal,Vertical offset in pixels (e.g., '20,20' for 20px right and 20px down)")
+        self.stamp_offset_edit.setPlaceholderText("x,y (e.g., 20,20)")
+        pdf_layout.addRow("Stamp Offset:", self.stamp_offset_edit)
+        
         layout.addWidget(pdf_group)
         
         # General Processing group
@@ -271,6 +277,7 @@ class ConfigDialog(QDialog):
             'stamp_always_accept': settings.stamp_always_accept,
             'stamp_pic_name': settings.stamp_pic_name,
             'stamp_position': settings.stamp_position,
+            'stamp_offset': settings.stamp_offset,
             'log_level': settings.log_level,
             'max_file_size_mb': settings.max_file_size_mb,
             'concurrent_processing': settings.concurrent_processing,
@@ -286,6 +293,7 @@ class ConfigDialog(QDialog):
         self.always_accept_cb.setChecked(settings.stamp_always_accept)
         self.pic_name_edit.setText(settings.stamp_pic_name)
         self.stamp_position_combo.setCurrentText(settings.stamp_position)
+        self.stamp_offset_edit.setText(settings.stamp_offset)
         self.log_level_combo.setCurrentText(settings.log_level)
         self.max_file_size_spin.setValue(settings.max_file_size_mb)
         self.concurrent_processing_cb.setChecked(settings.concurrent_processing)
@@ -310,6 +318,7 @@ class ConfigDialog(QDialog):
             settings.stamp_always_accept = self.always_accept_cb.isChecked()
             settings.stamp_pic_name = self.pic_name_edit.text().strip()
             settings.stamp_position = self.stamp_position_combo.currentText()
+            settings.stamp_offset = self.stamp_offset_edit.text().strip()
             settings.log_level = self.log_level_combo.currentText()
             settings.max_file_size_mb = self.max_file_size_spin.value()
             settings.concurrent_processing = self.concurrent_processing_cb.isChecked()
@@ -352,6 +361,7 @@ ENABLE_STAMPING={settings.enable_stamping}
 STAMP_PIC_NAME={settings.stamp_pic_name}
 STAMP_ALWAYS_ACCEPT={settings.stamp_always_accept}
 STAMP_POSITION={settings.stamp_position}
+STAMP_OFFSET={settings.stamp_offset}
 """
         
         try:
@@ -377,6 +387,7 @@ STAMP_POSITION={settings.stamp_position}
             self.always_accept_cb.setChecked(True)
             self.pic_name_edit.setText("Jane Smith")
             self.stamp_position_combo.setCurrentText("bottom-right")
+            self.stamp_offset_edit.setText("20,20")
             self.log_level_combo.setCurrentText("INFO")
             self.max_file_size_spin.setValue(10)
             self.concurrent_processing_cb.setChecked(True)

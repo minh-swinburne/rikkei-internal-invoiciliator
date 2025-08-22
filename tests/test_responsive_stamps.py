@@ -239,7 +239,7 @@ def test_responsive_variations():
     start_y = 200
     current_x = start_x
     current_y = start_y
-    margin = 20
+    offset = 20
     max_width = rect.width - 100  # Leave some margin
     
     print("Creating stamps with responsive sizing...")
@@ -255,7 +255,7 @@ def test_responsive_variations():
         print(f"Stamp {i+1}: '{case['status'][:20]}...' -> {width:.1f}x{height:.1f}px")
         
         # Move to next position
-        current_y += height + margin
+        current_y += height + offset
         
         # If we're getting close to the bottom, wrap to next column
         if current_y + 100 > rect.height:

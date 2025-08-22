@@ -2,6 +2,7 @@
 Help dialog for displaying user guide and documentation.
 """
 import re
+import sys
 import platform
 import subprocess
 from pathlib import Path
@@ -238,6 +239,9 @@ class HelpDialog(QDialog):
             # Try to find the user guide file
             project_root = get_project_root()
             possible_paths = [
+                # For bundled executable (PyInstaller)
+                Path(sys._MEIPASS) / "assets" / "USER_GUIDE.md" if hasattr(sys, '_MEIPASS') else None,
+                # For development
                 project_root / "src" / "assets" / "USER_GUIDE.md",  # New comprehensive guide
                 project_root / "dist" / "USER_GUIDE.txt",
                 project_root / "USER_GUIDE.txt",
@@ -247,8 +251,9 @@ class HelpDialog(QDialog):
             
             user_guide_path = None
             for path in possible_paths:
-                if path.exists():
+                if path and path.exists():
                     user_guide_path = path
+                    self.logger.info(f"Found user guide at: {path}")
                     break
             
             if user_guide_path:
@@ -385,6 +390,9 @@ For additional help, contact your IT support team.
             # Try to find the user guide file
             project_root = get_project_root()
             possible_paths = [
+                # For bundled executable (PyInstaller)
+                Path(sys._MEIPASS) / "assets" / "USER_GUIDE.md" if hasattr(sys, '_MEIPASS') else None,
+                # For development
                 project_root / "src" / "assets" / "USER_GUIDE.md",  # New comprehensive guide
                 project_root / "dist" / "USER_GUIDE.txt",
                 project_root / "USER_GUIDE.txt",
@@ -393,7 +401,7 @@ For additional help, contact your IT support team.
             
             user_guide_path = None
             for path in possible_paths:
-                if path.exists():
+                if path and path.exists():
                     user_guide_path = path
                     break
             
@@ -414,6 +422,7 @@ For additional help, contact your IT support team.
                     "File Not Found",
                     "User guide file not found.\n\n"
                     "The user guide should be located at:\n"
+                    "• src/assets/USER_GUIDE.md\n"
                     "• dist/USER_GUIDE.txt\n"
                     "• USER_GUIDE.txt\n"
                     "• docs/USER_GUIDE.txt"

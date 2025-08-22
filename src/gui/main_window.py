@@ -644,17 +644,24 @@ class MainWindow(QMainWindow):
     
     def load_settings(self):
         """Load settings into the UI."""
-        # Set default directories as relative paths
-        self.input_dir_edit.setText("data/input")
-        self.output_dir_edit.setText("data/output")
+        # Load directories from QSettings, with defaults as fallback
+        input_dir = self.settings.value("input_dir", "data/input")
+        output_dir = self.settings.value("output_dir", "data/output")
+        pic_name = self.settings.value("pic_name", settings.stamp_pic_name)
+        
+        self.input_dir_edit.setText(input_dir)
+        self.output_dir_edit.setText(output_dir)
+        self.pic_name_edit.setText(pic_name)
         
         # Set tooltips to show full paths
-        input_full_path = self.project_root / "data/input" 
-        output_full_path = self.project_root / "data/output"
+        input_full_path = self.get_absolute_path(input_dir)
+        output_full_path = self.get_absolute_path(output_dir)
         self.input_dir_edit.setToolTip(f"Full path: {input_full_path}")
         self.output_dir_edit.setToolTip(f"Full path: {output_full_path}")
-        
-        # Set PIC name from settings
+    
+    def reload_config_settings(self):
+        """Reload only the settings that might have changed from config dialog."""
+        # Only update PIC name from global settings, preserve directories
         self.pic_name_edit.setText(settings.stamp_pic_name)
     
     def save_settings(self):
@@ -747,8 +754,8 @@ class MainWindow(QMainWindow):
         """Show the advanced settings dialog."""
         dialog = ConfigDialog(self)
         if dialog.exec() == dialog.DialogCode.Accepted:
-            # Reload settings if they were saved
-            self.load_settings()
+            # Reload only config-related settings, preserve directories
+            self.reload_config_settings()
     
     def show_user_guide(self):
         """Show the user guide help dialog."""
@@ -1706,11 +1713,14 @@ class MainWindow(QMainWindow):
             
             if reply == QMessageBox.StandardButton.Yes:
                 self.stop_processing()
-                event.accept()
             else:
                 event.ignore()
-        else:
-            event.accept()
+                return
+        
+        # Save settings before closing
+        self.save_settings()
         
         if self.engine:
             self.engine.cleanup()
+        
+        event.accept()

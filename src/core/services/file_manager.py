@@ -109,24 +109,23 @@ class FileManager:
             width = min(max(content_width + padding_x * 2 + border_width * 2, 180), 320)
             height = min(max(content_height + padding_y * 2 + border_width * 2, 70), 110)
             
-            # Position stamp based on settings
-            margin_x = 20
-            margin_y = 20
+            # Position stamp based on settings with dynamic offset
+            offset_x, offset_y = settings.stamp_offset_xy
             tb, lr = settings.stamp_position.split("-")
 
             if tb == "top":
-                y0 = margin_y
-                y1 = margin_y + height
+                y0 = offset_y
+                y1 = offset_y + height
             else:  # bottom
-                y0 = rect.height - height - margin_y
-                y1 = rect.height - margin_y
+                y0 = rect.height - height - offset_y
+                y1 = rect.height - offset_y
             
             if lr == "left":
-                x0 = margin_x
-                x1 = margin_x + width
+                x0 = offset_x
+                x1 = offset_x + width
             else:  # right
-                x0 = rect.width - width - margin_x
-                x1 = rect.width - margin_x
+                x0 = rect.width - width - offset_x
+                x1 = rect.width - offset_x
 
             stamp_rect = Rect(x0, y0, x1, y1)
             

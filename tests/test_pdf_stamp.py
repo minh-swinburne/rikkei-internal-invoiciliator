@@ -87,9 +87,9 @@ def test_stamp_variations(pdf_path: str, output_dir: str):
         height = min(max(content_height + padding_y * 2 + border_width * 2, 60), 100)
         
         # Position each stamp
-        margin = 20
+        offset = 20
         y_pos = 50 + i * (height + 20)  # 20px spacing between stamps
-        x_pos = rect.width - width - margin
+        x_pos = rect.width - width - offset
         
         # Create the rectangle for background
         stamp_rect = Rect(x_pos, y_pos, x_pos + width, y_pos + height)

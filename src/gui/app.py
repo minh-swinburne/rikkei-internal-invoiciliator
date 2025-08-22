@@ -17,11 +17,13 @@ from ..logging_config import setup_logging, get_module_logger
 class InvoiceReconciliationApp:
     """Main GUI application class."""
     
-    def __init__(self):
+    def __init__(self, instance_manager=None):
         """Initialize the application."""
         self.app: Optional[QApplication] = None
         self.main_window: Optional[MainWindow] = None
         self.logger = None
+        self.instance_manager = instance_manager
+        self.instance_listener = None
     
     def setup_application(self) -> QApplication:
         """Set up the QApplication with proper settings."""
@@ -49,17 +51,31 @@ class InvoiceReconciliationApp:
             # If style setting fails, continue with default
             print(f"Could not set default style: {e}")
         
-        # Set application icon (if available)
-        icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
-        if icon_path.exists():
-            try:
-                icon = QIcon(str(icon_path))
-                if not icon.isNull():
-                    # Scale down large icons to prevent rendering issues
-                    app.setWindowIcon(icon)
-            except Exception as e:
-                # Silently ignore icon loading errors to prevent QPainter issues
-                print(f"Warning: Could not load application icon: {e}")
+        # Set application icon (check multiple locations for bundled/dev versions)
+        icon_paths = [
+            # For bundled executable (PyInstaller)
+            Path(sys._MEIPASS) / "assets" / "icon.ico" if hasattr(sys, '_MEIPASS') else None,
+            Path(sys._MEIPASS) / "assets" / "icon.png" if hasattr(sys, '_MEIPASS') else None,
+            # For development
+            Path(__file__).parent.parent / "assets" / "icon.ico",
+            Path(__file__).parent.parent / "assets" / "icon.png"
+        ]
+        
+        icon_loaded = False
+        for icon_path in icon_paths:
+            if icon_path and icon_path.exists():
+                try:
+                    icon = QIcon(str(icon_path))
+                    if not icon.isNull():
+                        app.setWindowIcon(icon)
+                        print(f"Application icon loaded from: {icon_path}")
+                        icon_loaded = True
+                        break
+                except Exception as e:
+                    print(f"Could not load icon from {icon_path}: {e}")
+        
+        if not icon_loaded:
+            print("Warning: Could not load application icon from any location")
         
         return app
     
@@ -85,10 +101,29 @@ class InvoiceReconciliationApp:
             self.main_window = MainWindow()
             self.main_window.show()
             
+            # Set up single instance listener if we have an instance manager
+            if self.instance_manager:
+                from .single_instance import SingleInstanceListener
+                
+                def show_window():
+                    """Callback to show main window when requested by another instance"""
+                    if self.main_window:
+                        self.main_window.show()
+                        self.main_window.raise_()
+                        self.main_window.activateWindow()
+                
+                self.instance_listener = SingleInstanceListener(
+                    self.instance_manager, 
+                    show_window_callback=show_window
+                )
+                self.instance_listener.start_listening()
+            
             self.logger.info("GUI application started successfully")
             
             # Run the event loop
-            return self.app.exec()
+            result = self.app.exec()
+            
+            return result
             
         except Exception as e:
             print(f"Failed to start GUI application: {e}")
@@ -97,6 +132,12 @@ class InvoiceReconciliationApp:
             return 1
         
         finally:
+            # Clean up single instance resources
+            if self.instance_listener:
+                self.instance_listener.stop_listening()
+            if self.instance_manager:
+                self.instance_manager.cleanup()
+                
             if self.logger:
                 self.logger.info("=== Invoice Reconciliation GUI Closed ===")
 

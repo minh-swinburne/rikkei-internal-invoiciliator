@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     stamp_pic_name: str = Field(default="Jane Smith", description="Name of PIC for PDF stamp")
     stamp_always_accept: bool = Field(default=True, description="Always stamp invoices as accepted")
     stamp_position: str = Field(default="bottom-right", description="Position for PDF stamps")
+    stamp_offset: str = Field(default="20,20", description="Horizontal,Vertical offset for stamp position")
     
     model_config = {
         "env_file": ".env",
@@ -77,6 +78,16 @@ class Settings(BaseSettings):
                 f"LLM API key is required. Set LLM_API_KEY or OPENROUTER_API_KEY environment variable.\n"
                 f"Available env vars: {list(os.environ.keys())[:10]}..."
             )
+    
+    @property
+    def stamp_offset_xy(self) -> tuple[int, int]:
+        """Parse stamp offset string into (x, y) tuple."""
+        try:
+            x_str, y_str = self.stamp_offset.split(",")
+            return int(x_str.strip()), int(y_str.strip())
+        except (ValueError, AttributeError):
+            # Return default offset if parsing fails
+            return 20, 20
 
 
 # Global settings instance

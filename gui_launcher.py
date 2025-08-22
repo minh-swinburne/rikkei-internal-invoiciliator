@@ -18,9 +18,21 @@ sys.path.insert(0, str(src_dir))
 def main():
     """Launch the GUI application."""
     try:
+        # Import single instance manager
+        from src.gui.single_instance import ensure_single_instance
+        
+        # Check for existing instance
+        instance_manager, is_first_instance = ensure_single_instance("InvoiceReconciliator")
+        
+        if not is_first_instance:
+            print("Another instance of Invoice Reconciliator is already running.")
+            print("The existing window has been brought to the foreground.")
+            sys.exit(0)
+        
+        # We're the first instance, proceed with launching
         from src.gui.app import InvoiceReconciliationApp
         
-        app = InvoiceReconciliationApp()
+        app = InvoiceReconciliationApp(instance_manager)
         sys.exit(app.run())
         
     except ImportError as e:

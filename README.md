@@ -1,44 +1,66 @@
-# rikkei-internal-invoiciliator
-
-# Invoice Reconciliator
+# Invoice Reconciliator v1.0
 
 ## Overview
-This project is a Python-based tool designed to automate the reconciliation of invoices and purchase orders (POs) in PDF format. The tool extracts text from PDFs, processes the data using a Large Language Model (LLM) API (via OpenRouter), and validates the invoices against the purchase orders based on predefined protocols. It also provides a simple GUI for configuration and monitoring.
+A professional Python-based application for automated invoice and purchase order (PO) reconciliation. This tool extracts data from merged PDF files, processes them using AI (via OpenRouter API), validates against business rules, and provides comprehensive approval workflows with both GUI and CLI interfaces.
+
+## ✨ Key Features
+- **🤖 AI-Powered Processing**: Uses advanced language models (Google Gemini 2.0 Flash) for intelligent data extraction
+- **📋 Smart Validation**: Comprehensive business rule validation for PO/invoice matching
+- **🖥️ Professional GUI**: Modern PySide6 interface with real-time processing and advanced configuration
+- **⚡ CLI Support**: Full command-line interface for automation and batch processing
+- **📄 PDF Stamping**: Professional approval stamps with configurable positioning
+- **🔧 Enterprise Ready**: Robust error handling, audit trails, and compliance features
+- **📦 Easy Distribution**: Complete build system with professional installer
 
 ## Features
-- **PDF Processing**: 
+- **🔍 Advanced PDF Processing**: 
   - Extracts structured text from merged PDF files (invoice + purchase order)
   - Supports multiple vendor formats (Ingram, TD SYNNEX, Saison Tech, KDDI America)
-  - Responsive PDF stamping with customizable positioning and styling
+  - Responsive PDF stamping with customizable positioning and professional styling
   - Automatic file organization into approved/review directories
-- **LLM Integration**: 
-  - Uses OpenRouter API with OpenAI library for intelligent data extraction
-  - Configurable model selection (default: Google Gemini 2.0 Flash)
-  - Structured data parsing from unstructured PDF content with fallback to text parsing
-  - Retry mechanisms and error handling for API reliability
-- **Validation Protocols**:
+
+- **🤖 AI-Powered Intelligence**: 
+  - Uses OpenRouter API with configurable AI models (default: Google Gemini 2.0 Flash)
+  - Structured data parsing from unstructured PDF content with intelligent fallbacks
+  - Retry mechanisms and comprehensive error handling for API reliability
+  - Advanced prompt engineering for accurate vendor-specific data extraction
+
+- **✅ Comprehensive Validation**:
   - **PO Number Matching**: Validates PO numbers between invoice and purchase order
   - **Item Matching**: Uses SKU (6-7 char alphanumeric) or VPN for item identification
   - **Price Validation**: Ensures unit prices match between documents
   - **Quantity Handling**: Supports partial deliveries (shipped ≤ ordered quantity)
   - **Edge Case Detection**: Identifies credit memos, missing SKUs, alternative identifiers
   - **Fee Handling**: Accounts for extra fees (handling, freight, shipping)
-- **Approval Workflow**:
+
+- **🖥️ Professional GUI Interface**:
+  - Modern PySide6-based interface with comprehensive tooltips
+  - Real-time processing with background threading and progress tracking
+  - Advanced settings dialog with tabbed configuration
+  - Integrated help system with F1 shortcut and dynamic content parsing
+  - Professional theme management with dark/light mode support
+  - Persistent settings and user preferences
+  - Single instance management to prevent multiple app launches
+
+- **⚡ Command Line Interface**:
+  - Comprehensive CLI with flexible options for automation
+  - Single file or batch directory processing capabilities
+  - Configurable logging levels and output directories
+  - Flexible stamping options and processing overrides
+
+- **📋 Professional Approval Workflow**:
   - Responsive PDF stamping with gradient backgrounds and proper typography
-  - Customizable stamp positioning (top-left, top-right, bottom-left, bottom-right)
+  - Configurable stamp positioning (all four corners with custom offsets)
   - Stamps include PIC name, timestamp, and status with appropriate icons
   - Moves files to appropriate folders (approved/review required)
-  - Maintains audit trail of processing results with JSON output
-- **CLI Interface**:
-  - Comprehensive command-line interface with multiple options
-  - Single file or batch directory processing
-  - Configurable logging levels and output directories
-  - Flexible stamping options and overrides
-- **Architecture**:
-  - Global service instances for better performance in batch processing
-  - Path object usage throughout for type safety
+  - Maintains detailed audit trail of processing results with JSON output
+
+- **🏗️ Enterprise Architecture**:
+  - Global service instances for optimal performance in batch processing
+  - Type-safe Path object usage throughout the application
   - Decoupled stamping and file copying operations
-  - Comprehensive error handling and logging
+  - Comprehensive error handling and structured logging
+  - Robust build system with PyInstaller and professional installer
 
 ## Requirements
 - Python 3.10+
@@ -50,27 +72,47 @@ This project is a Python-based tool designed to automate the reconciliation of i
 - **Optional Dependencies**:
   - PySide6: For GUI interface (if using GUI mode)
 
-## Installation
-1. Clone the repository:
+## Quick Start
+
+### 🚀 Ready-to-Use Release
+1. **Download** the installer from the releases page
+2. **Run** `Invoice_Reconciliator_Setup.exe` to install
+3. **Launch** the application from Start Menu or desktop shortcut
+4. **Configure** your OpenRouter API key in Settings
+5. **Start Processing** PDFs immediately!
+
+### 🛠️ Development Setup
+1. **Clone** the repository:
    ```bash
    git clone https://github.com/minh-swinburne/rikkei-internal-invoiciliator.git
    cd rikkei-internal-invoiciliator
    ```
-2. Create and activate virtual environment (recommended):
+2. **Create** virtual environment:
    ```bash
    python -m venv .venv
-   # On Windows
+   # Windows
    .venv\Scripts\activate
-   # On macOS/Linux
+   # macOS/Linux
    source .venv/bin/activate
    ```
-3. Install dependencies:
+3. **Install** dependencies:
    ```bash
-   # Using pip
-   pip install -r requirements.txt
-   
-   # Or using uv (faster alternative)
+   # Using uv (recommended - faster)
    uv pip install -r requirements.txt
+   # Or using pip
+   pip install -r requirements.txt
+   ```
+4. **Configure** environment:
+   ```bash
+   copy .env.example .env
+   # Edit .env with your OpenRouter API key
+   ```
+5. **Run** the application:
+   ```bash
+   # GUI Mode
+   python gui_launcher.py
+   # CLI Mode
+   python main.py --help
    ```
 
 ## Configuration
@@ -112,7 +154,22 @@ The tool supports various models available through OpenRouter:
 
 ## Usage
 
-### Command Line Interface
+### 🖥️ GUI Mode (Recommended)
+Launch the graphical interface for easy configuration and monitoring:
+```bash
+python gui_launcher.py
+```
+
+**GUI Features:**
+- **📁 Drag & Drop**: Easy folder selection for input and output
+- **⚙️ Settings Dialog**: Advanced configuration with API testing
+- **📊 Real-time Progress**: Live processing updates and file status
+- **📋 Results Table**: Sortable results with detailed viewing options
+- **❓ Integrated Help**: F1 help system with comprehensive guides
+- **🎨 Theme Support**: Professional themes with dark/light modes
+- **📄 PDF Viewer**: Built-in PDF viewing for processed documents
+
+### 💻 Command Line Interface
 The application provides a comprehensive CLI with the following options:
 
 #### Basic Usage
@@ -159,55 +216,103 @@ python main.py --input-dir data/input --stamp --stamp-pic-name "Yuko Yamada"
 ```
 
 ### Configuration Setup
-1. Create environment configuration:
-   ```bash
-   copy .env.example .env
-   ```
-2. Edit `.env` file with your OpenRouter API key:
+1. **API Key Configuration**:
+   - Use GUI: Settings → LLM Configuration → API Key
+   - Or edit `.env` file manually:
    ```env
    OPENROUTER_API_KEY=your_api_key_here
-   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
    OPENROUTER_MODEL=google/gemini-2.0-flash-001
    ```
 
+2. **Processing Settings**:
+   - **Enable Stamping**: Add approval stamps to PDFs
+   - **PIC Name**: Person in charge name for stamps
+   - **Stamp Position**: Configurable positioning with custom offsets
+   - **Always Accept**: Auto-approve mode for trusted workflows
+
 ### Output Structure
-The tool automatically creates timestamped output directories with the following structure:
+The tool automatically creates organized output directories:
 ```
 data/output/YYYYMMDD_HHMMSS/
-├── approved/         # Successfully validated invoices
-├── review/           # Invoices requiring manual review
-└── result/           # Processing results and validation details
+├── approved/         # ✅ Successfully validated invoices
+├── review/           # ⚠️ Invoices requiring manual review
+└── result/           # 📊 Processing results and validation details
 ```
 
-## Notes
-- **Input Format**: PDF files must contain both invoice and purchase order (merged document)
-- **Supported Vendors**: Ingram, TD SYNNEX, Saison Tech (invoices), KDDI America (purchase orders)
-- **Manual Review Cases**: 
+## Building and Distribution
+
+### 🏗️ Create Executable
+For deployment and distribution:
+
+```bash
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# Full build process (creates installer)
+.\build
+
+# Or step-by-step:
+python build.py check    # ✅ Verify dependencies
+python build.py build    # 🔨 Create executable  
+python build.py install  # 📦 Create installer
+```
+
+**Build Output:**
+- `dist/Invoice_Reconciliator.exe` - Standalone executable
+- `dist/Invoice_Reconciliator_Setup.exe` - Professional installer
+
+### 📋 System Requirements
+- **OS**: Windows 10/11 (primary), macOS/Linux (development)
+- **Python**: 3.10+ (for development)
+- **Memory**: 4GB RAM minimum, 8GB recommended
+- **Storage**: 100MB for application, 1GB+ for processing data
+- **Network**: Internet connection required for AI processing
+
+## Support and Documentation
+
+### 📚 Help Resources
+- **Integrated Help**: Press F1 in the application for comprehensive guides
+- **User Guide**: Available in the application and `docs/` folder
+- **API Documentation**: Detailed code documentation in source files
+- **Build Guides**: Complete build and deployment instructions
+
+### 🐛 Troubleshooting
+- **API Issues**: Verify OpenRouter API key and model availability
+- **PDF Processing**: Ensure PDFs contain readable text (not just images)
+- **Memory Usage**: Monitor memory for large batches; files are processed sequentially
+- **Build Problems**: Check Python version and dependency installation
+- **Performance**: Use `--log-level DEBUG` for detailed processing information
+
+## Development
+- **Testing**: Run `python tests/test_pdf_stamp.py` for PDF stamping functionality
+- **Code Style**: Follow PEP 8 guidelines with comprehensive type hints
+- **Architecture**: Services are globally initialized for optimal batch performance
+- **Extensibility**: New vendor formats easily added via LLM prompt engineering
+- **Logging**: Comprehensive structured logging for debugging and audit trails
+
+## Important Notes
+- **📄 Input Format**: PDF files must contain both invoice and purchase order (merged document)
+- **🏢 Supported Vendors**: Ingram, TD SYNNEX, Saison Tech (invoices), KDDI America (purchase orders)
+- **⚠️ Manual Review Cases**: 
   - Credit memos requiring manual verification
   - Items with missing or alternative SKU formats
   - Batch pricing discrepancies
   - VPN inconsistencies between description and column data
-- **File Organization**: Processed files are automatically sorted into approved/review folders with timestamped directories
-- **Performance**: Global service instances ensure efficient batch processing without service recreation overhead
-- **Stamping Features**:
-  - Responsive sizing based on content length
-  - Gradient backgrounds and professional styling
-  - Customizable positioning and person information
-  - Fallback to copying if stamping fails
+- **📁 File Organization**: Automatic sorting into approved/review folders with timestamped directories
+- **⚡ Performance**: Global service instances ensure efficient batch processing
+- **🏷️ Professional Stamping**: Responsive sizing, gradient backgrounds, configurable positioning
 
-## Troubleshooting
-- **API Issues**: Check your OpenRouter API key and model availability
-- **PDF Processing**: Ensure PDFs contain readable text (not just images)
-- **Memory Usage**: For large batches, monitor memory usage; services are reused but PDFs are processed sequentially
-- **Logging**: Use `--log-level DEBUG` for detailed processing information
-- **File Permissions**: Ensure write permissions for output directories
-
-## Development
-- **Testing**: Run `python tests/test_pdf_stamp.py` to test PDF stamping functionality
-- **Code Style**: Follow PEP 8 guidelines and use type hints
-- **Architecture**: Services are globally initialized for better performance in batch operations
-- **Extensibility**: New vendor formats can be added by extending the LLM extraction prompts
+## Version History
+- **v1.0.0** - Initial release with full GUI and CLI interfaces
+  - Complete AI-powered invoice reconciliation
+  - Professional GUI with advanced settings
+  - Comprehensive build and distribution system
+  - Enterprise-ready features and documentation
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
+
+---
+
+**🎉 Ready for Production Use** - Version 1.0 includes all enterprise features for professional invoice reconciliation workflows.
 
