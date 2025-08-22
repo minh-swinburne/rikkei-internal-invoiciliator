@@ -1,6 +1,7 @@
 darkdetect
 openai
 pandas
+pillow
 pymupdf
 pyside6
 python-dotenv

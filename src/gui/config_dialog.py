@@ -347,7 +347,7 @@ STAMP_POSITION={settings.stamp_position}
             self.concurrent_processing_cb.setChecked(True)
             
             # LLM defaults
-            self.model_edit.setText("anthropic/claude-3.5-sonnet:beta")
+            self.model_edit.setText("google/gemini-2.0-flash-001")
             self.base_url_edit.setText("https://openrouter.ai/api/v1")
             self.max_retries_spin.setValue(3)
             self.timeout_spin.setValue(60)

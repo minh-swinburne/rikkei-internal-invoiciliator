@@ -18,7 +18,7 @@ from ..core import InvoiceReconciliationEngine
 def main():
     """Main CLI entry point using the core engine."""
     parser = argparse.ArgumentParser(
-        description="Invoice Reconciliation Tool - Process invoices and purchase orders"
+        description="Invoice Reconciliator - Process invoices and purchase orders"
     )
     
     parser.add_argument(
@@ -91,7 +91,7 @@ def main():
         is_test=False
     )
     
-    logger.info("=== Invoice Reconciliation Tool Started ===")
+    logger.info("=== Invoice Reconciliator Started ===")
     logger.info(f"Using LLM Model: {settings.llm_model}")
     logger.info(f"LLM Provider URL: {settings.llm_base_url}")
     logger.info(f"PDF Stamping: {'Enabled' if settings.enable_stamping else 'Disabled'}")
@@ -170,7 +170,7 @@ def main():
             engine.cleanup()
         sys.exit(1)
     
-    logger.info("=== Invoice Reconciliation Tool Completed ===")
+    logger.info("=== Invoice Reconciliator Completed ===")
 
 
 if __name__ == "__main__":

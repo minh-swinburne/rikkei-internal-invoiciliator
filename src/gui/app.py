@@ -29,8 +29,8 @@ class InvoiceReconciliationApp:
         app = QApplication(sys.argv)
         
         # Set application properties
-        app.setApplicationName("Invoice Reconciliation Tool")
-        app.setApplicationVersion("2.0.0")
+        app.setApplicationName("Invoice Reconciliator")
+        app.setApplicationVersion("1.0.0")
         app.setOrganizationName("KDDI")
         app.setOrganizationDomain("kddi.com")
         

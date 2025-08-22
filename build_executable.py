@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build script for creating Invoice Reconciliation Tool executable
+Build script for creating Invoice Reconciliator executable
 
 This script automates the process of building the executable using PyInstaller.
 It handles cleanup, building, and provides helpful output.
@@ -14,7 +14,7 @@ from pathlib import Path
 
 def main():
     """Main build process."""
-    print("🔨 Building Invoice Reconciliation Tool Executable")
+    print("🔨 Building Invoice Reconciliator Executable")
     print("=" * 50)
     
     # Get project root
@@ -58,7 +58,7 @@ def main():
                 # Create a simple README for distribution
                 readme_path = dist_dir / "README.txt"
                 with open(readme_path, 'w') as f:
-                    f.write("""Invoice Reconciliation Tool - Executable Distribution
+                    f.write("""Invoice Reconciliator - Executable Distribution
 
 IMPORTANT: Configuration Required
 ================================

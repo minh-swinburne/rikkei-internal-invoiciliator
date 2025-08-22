@@ -26,7 +26,17 @@ class QtLogHandler(logging.Handler, QObject):
     def emit(self, record):
         """Emit log record as Qt signal."""
         try:
+            # Format the message but strip the 'invoice_reconciliator.' prefix for cleaner display
             message = self.format(record)
+            
+            # Remove the common prefix to make the log viewer cleaner
+            if message.startswith('invoice_reconciliator.'):
+                # Remove 'invoice_reconciliator.' prefix (22 characters)
+                message = message[22:]
+            elif message.startswith('invoice_reconciliator - '):
+                # Handle case where it's just the root logger
+                message = message.replace('invoice_reconciliator - ', '')
+            
             level = record.levelname
             self.log_message.emit(level, message)
         except Exception:
@@ -40,11 +50,15 @@ class LogCapture:
     def __init__(self, log_handler: QtLogHandler, logger_names: list = None):
         self.log_handler = log_handler
         self.logger_names = logger_names or [
-            'invoice_reconciliation',
-            'core',
-            'core.engine', 
-            'core.services',
-            'gui'
+            # 'invoice_reconciliator',
+            'invoice_reconciliator.gui',
+            'invoice_reconciliator.core',
+            'invoice_reconciliator.engine',
+            'invoice_reconciliator.pdf_processor',
+            'invoice_reconciliator.llm_extractor',
+            'invoice_reconciliator.validator',
+            'invoice_reconciliator.file_manager',
+            'invoice_reconciliator.service_manager'
         ]
         self.original_levels = {}
         self.added_handlers = []

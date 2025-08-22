@@ -1,5 +1,5 @@
 @echo off
-echo Building Invoice Reconciliation Tool Executable...
+echo Building Invoice Reconciliator Executable...
 echo.
 
 REM Activate virtual environment

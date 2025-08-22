@@ -1,5 +1,5 @@
 """
-GUI package for Invoice Reconciliation Tool
+GUI package for Invoice Reconciliator
 
 This package contains the user interface components for the invoice reconciliation application.
 """

@@ -38,7 +38,7 @@ def test_icon():
 
 def main():
     """Launch diagnostic version."""
-    print("=== Invoice Reconciliation Tool - Diagnostic Mode ===")
+    print("=== Invoice Reconciliator - Diagnostic Mode ===")
     
     # Test icon first
     test_icon()

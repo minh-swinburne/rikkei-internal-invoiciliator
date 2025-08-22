@@ -1,8 +1,8 @@
-# Invoice Reconciliation Tool - Executable Distribution Guide
+# Invoice Reconciliator - Executable Distribution Guide
 
 ## 🎉 Build Successful!
 
-Your Invoice Reconciliation Tool has been successfully compiled into a standalone executable!
+Your Invoice Reconciliator has been successfully compiled into a standalone executable!
 
 ## 📦 What Was Created
 
@@ -135,7 +135,7 @@ python build_executable.py
 
 ## 📝 Version Information
 
-- **Application**: Invoice Reconciliation Tool
+- **Application**: Invoice Reconciliator
 - **Build Date**: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 - **Python Version**: 3.12.10
 - **PyInstaller**: 6.15.0

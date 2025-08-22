@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GUI Launcher for Invoice Reconciliation Tool
+GUI Launcher for Invoice Reconciliator
 
 This script launches the GUI version of the invoice reconciliation tool.
 It provides a user-friendly interface for non-technical accountants.

@@ -1,6 +1,6 @@
 # rikkei-internal-invoiciliator
 
-# Invoice Reconciliation Tool
+# Invoice Reconciliator
 
 ## Overview
 This project is a Python-based tool designed to automate the reconciliation of invoices and purchase orders (POs) in PDF format. The tool extracts text from PDFs, processes the data using a Large Language Model (LLM) API (via OpenRouter), and validates the invoices against the purchase orders based on predefined protocols. It also provides a simple GUI for configuration and monitoring.

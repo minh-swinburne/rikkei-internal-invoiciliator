@@ -2,7 +2,10 @@
 Log viewer widget for the invoice reconciliation GUI application.
 """
 
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtWidgets import (
@@ -106,16 +109,6 @@ class LogViewer(QGroupBox):
         self.auto_scroll_cb.toggled.connect(self.toggle_auto_scroll)
         control_layout.addWidget(self.auto_scroll_cb)
         
-        # Clear button
-        clear_btn = QPushButton("Clear")
-        clear_btn.clicked.connect(self.clear)
-        control_layout.addWidget(clear_btn)
-        
-        # Export button
-        export_btn = QPushButton("Export Logs")
-        export_btn.clicked.connect(self.export_logs)
-        control_layout.addWidget(export_btn)
-        
         layout.addLayout(control_layout)
         
         # Log text area
@@ -129,6 +122,32 @@ class LogViewer(QGroupBox):
         self.log_text.setFont(font)
         
         layout.addWidget(self.log_text)
+        
+        # Action buttons (similar to results section)
+        button_layout = QHBoxLayout()
+        
+        # Copy all logs button
+        copy_all_btn = QPushButton("Copy All Logs")
+        copy_all_btn.clicked.connect(self.copy_all_logs)
+        button_layout.addWidget(copy_all_btn)
+        
+        # Clear button
+        clear_btn = QPushButton("Clear Logs")
+        clear_btn.clicked.connect(self.clear)
+        button_layout.addWidget(clear_btn)
+        
+        # Export button
+        export_btn = QPushButton("Export Logs")
+        export_btn.clicked.connect(self.export_logs)
+        button_layout.addWidget(export_btn)
+        
+        # Open log folder button
+        open_folder_btn = QPushButton("Open Log Folder")
+        open_folder_btn.clicked.connect(self.open_log_folder)
+        button_layout.addWidget(open_folder_btn)
+        
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
         
         # Status bar
         status_layout = QHBoxLayout()
@@ -166,9 +185,6 @@ class LogViewer(QGroupBox):
             cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
             cursor.removeSelectedText()
             cursor.deleteChar()  # Remove the newline
-        
-        # Render the message
-        self._render_log_message(level, message, timestamp)
         
         # Render the message
         self._render_log_message(level, message, timestamp)
@@ -264,6 +280,75 @@ class LogViewer(QGroupBox):
         """Get color for log level (legacy method for compatibility)."""
         _, level_color, _ = self._get_log_colors(level)
         return level_color
+    
+    def copy_all_logs(self):
+        """Copy all log content to clipboard."""
+        try:
+            clipboard = QApplication.clipboard()
+            log_content = self.log_text.toPlainText()
+            clipboard.setText(log_content)
+            
+            # Show temporary status message
+            self.status_label.setText("All logs copied to clipboard")
+            QTimer.singleShot(2000, lambda: self.status_label.setText("Ready"))
+            
+            self.logger.info("All logs copied to clipboard")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Copy Error", f"Failed to copy logs:\n{str(e)}")
+            self.logger.error(f"Failed to copy logs: {e}")
+    
+    def open_log_folder(self):
+        """Open the log folder and highlight the current log file if possible."""
+        try:
+            # Get the log folder path
+            log_folder = Path.cwd() / "logs" / "app"
+            
+            if not log_folder.exists():
+                QMessageBox.warning(
+                    self, 
+                    "Log Folder Not Found", 
+                    f"Log folder does not exist:\n{log_folder}"
+                )
+                return
+            
+            # Find the most recent log file
+            log_files = list(log_folder.glob("reconciliation_*.log"))
+            if log_files:
+                # Sort by modification time, most recent first
+                most_recent_log = max(log_files, key=lambda f: f.stat().st_mtime)
+                
+                # Try to open and highlight the file
+                if sys.platform == "win32":
+                    # Windows: Use explorer to select the file
+                    subprocess.run(["explorer", "/select,", str(most_recent_log)], check=False)
+                elif sys.platform == "darwin":
+                    # macOS: Use Finder to reveal the file
+                    subprocess.run(["open", "-R", str(most_recent_log)], check=False)
+                else:
+                    # Linux: Open the folder (can't easily highlight specific file)
+                    subprocess.run(["xdg-open", str(log_folder)], check=False)
+                
+                self.status_label.setText(f"Opened log folder - highlighted: {most_recent_log.name}")
+            else:
+                # No log files found, just open the folder
+                if sys.platform == "win32":
+                    subprocess.run(["explorer", str(log_folder)], check=False)
+                elif sys.platform == "darwin":
+                    subprocess.run(["open", str(log_folder)], check=False)
+                else:
+                    subprocess.run(["xdg-open", str(log_folder)], check=False)
+                
+                self.status_label.setText("Opened log folder")
+            
+            # Auto-clear timer to reset status message
+            QTimer.singleShot(3000, lambda: self.status_label.setText("Ready"))
+            
+            self.logger.info(f"Opened log folder: {log_folder}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Open Folder Error", f"Failed to open log folder:\n{str(e)}")
+            self.logger.error(f"Failed to open log folder: {e}")
     
     def refresh_theme(self):
         """Refresh theme detection and update display."""

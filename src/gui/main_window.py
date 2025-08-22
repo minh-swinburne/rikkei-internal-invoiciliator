@@ -2,7 +2,7 @@
 Main window for the invoice reconciliation GUI application.
 """
 
-import json
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +19,7 @@ from PySide6.QtGui import QAction, QFont, QIcon, QActionGroup, QColor, QPalette
 from .config_dialog import ConfigDialog
 from .log_viewer import LogViewer
 from .result_viewer import ResultDetailViewer
+from .help_dialog import HelpDialog
 from .qt_logging import QtLogHandler, LogCapture
 from ..core import InvoiceReconciliationEngine
 from ..settings import settings
@@ -41,6 +42,8 @@ class ProcessingThread(QThread):
         self.engine = engine
         self.input_dir = input_dir
         self.should_stop = False
+        self.is_paused = False
+        self.pause_event = QTimer()  # Use QTimer for pause control
         
         # Set up logging capture
         self.log_handler = QtLogHandler()
@@ -80,17 +83,27 @@ class ProcessingThread(QThread):
     def emit_progress_update(self, progress: dict):
         """Emit progress update with error handling."""
         try:
+            # Check for pause
+            self._check_pause()
+            if self.should_stop:
+                return
+                
             self.progress_updated.emit(progress)
         except Exception as e:
-            print(f"Error emitting progress update: {e}")
+            self.log_message.emit("ERROR", f"Error emitting progress update: {e}")
     
     def emit_file_started(self, result):
         """Emit file started signal with error handling."""
         try:
+            # Check for pause
+            self._check_pause()
+            if self.should_stop:
+                return
+                
             result_dict = result.model_dump() if hasattr(result, 'model_dump') else result
             self.file_started.emit(result_dict)
         except Exception as e:
-            print(f"Error emitting file started: {e}")
+            self.log_message.emit("ERROR", f"Error emitting file started: {e}")
     
     def emit_file_completed(self, result):
         """Emit file completed signal with error handling."""
@@ -98,7 +111,7 @@ class ProcessingThread(QThread):
             result_dict = result.model_dump() if hasattr(result, 'model_dump') else result
             self.file_completed.emit(result_dict)
         except Exception as e:
-            print(f"Error emitting file completed: {e}")
+            self.log_message.emit("ERROR", f"Error emitting file completed: {e}")
     
     def emit_workflow_completed(self, workflow):
         """Emit workflow completed signal with error handling."""
@@ -106,7 +119,7 @@ class ProcessingThread(QThread):
             summary = workflow.get_summary() if hasattr(workflow, 'get_summary') else workflow
             self.workflow_completed.emit(summary)
         except Exception as e:
-            print(f"Error emitting workflow completed: {e}")
+            self.log_message.emit("ERROR", f"Error emitting workflow completed: {e}")
     
     def stop(self):
         """Request to stop processing."""
@@ -118,6 +131,21 @@ class ProcessingThread(QThread):
                 self.log_message.emit("INFO", "Processing cancelled")
             except Exception as e:
                 self.log_message.emit("ERROR", f"Error during cancellation: {e}")
+    
+    def pause(self):
+        """Pause the processing."""
+        self.is_paused = True
+        self.log_message.emit("INFO", "Processing thread paused")
+    
+    def resume(self):
+        """Resume the processing."""
+        self.is_paused = False
+        self.log_message.emit("INFO", "Processing thread resumed")
+    
+    def _check_pause(self):
+        """Check if processing should be paused and wait if needed."""
+        while self.is_paused and not self.should_stop:
+            self.msleep(100)  # Sleep for 100ms and check again
 
 
 class MainWindow(QMainWindow):
@@ -130,10 +158,16 @@ class MainWindow(QMainWindow):
         # Project root for relative path calculations
         self.project_root = get_project_root()
         
+        # Set up permanent log capture for GUI
+        self.log_handler = QtLogHandler()
+        self.log_handler.log_message.connect(self.on_log_message)
+        self._setup_permanent_log_capture()
+        
         # Core components
         self.engine: Optional[InvoiceReconciliationEngine] = None
         self.processing_thread: Optional[ProcessingThread] = None
         self.output_dir: Optional[Path] = None
+        self.is_processing_paused: bool = False
         
         # UI components
         self.input_dir_edit: Optional[QLineEdit] = None
@@ -144,6 +178,7 @@ class MainWindow(QMainWindow):
         self.current_file_label: Optional[QLabel] = None
         self.start_button: Optional[QPushButton] = None
         self.stop_button: Optional[QPushButton] = None
+        self.pause_processing_btn: Optional[QPushButton] = None
         self.log_viewer: Optional[LogViewer] = None
         self.result_table: Optional[QTableWidget] = None
         
@@ -176,6 +211,58 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         return False
+    
+    def _setup_permanent_log_capture(self):
+        """Set up permanent log capture to show all application logs in the GUI."""
+        import logging
+        
+        # List of all logger names that should be captured
+        logger_names = [
+            'invoice_reconciliator',
+            'invoice_reconciliator.gui',
+            'invoice_reconciliator.core',
+            'invoice_reconciliator.engine',
+            'invoice_reconciliator.pdf_processor',
+            'invoice_reconciliator.llm_extractor',
+            'invoice_reconciliator.validator',
+            'invoice_reconciliator.file_manager',
+            'invoice_reconciliator.service_manager'
+        ]
+        
+        # Add our handler to all relevant loggers
+        for logger_name in logger_names:
+            logger = logging.getLogger(logger_name)
+            # Only add if not already present
+            if self.log_handler not in logger.handlers:
+                logger.addHandler(self.log_handler)
+                # Set level to capture all messages
+                if logger.level == logging.NOTSET or logger.level > logging.DEBUG:
+                    logger.setLevel(logging.DEBUG)
+    
+    def closeEvent(self, event):
+        """Handle application close event to clean up log handlers."""
+        import logging
+        
+        # Remove our handler from all loggers to prevent issues
+        logger_names = [
+            'invoice_reconciliator',
+            'invoice_reconciliator.gui',
+            'invoice_reconciliator.core',
+            'invoice_reconciliator.engine',
+            'invoice_reconciliator.pdf_processor',
+            'invoice_reconciliator.llm_extractor',
+            'invoice_reconciliator.validator',
+            'invoice_reconciliator.file_manager',
+            'invoice_reconciliator.service_manager'
+        ]
+        
+        for logger_name in logger_names:
+            logger = logging.getLogger(logger_name)
+            if self.log_handler in logger.handlers:
+                logger.removeHandler(self.log_handler)
+        
+        # Call parent close event
+        super().closeEvent(event)
     
     def _refresh_all_themes(self):
         """Refresh themes for all components."""
@@ -253,22 +340,56 @@ class MainWindow(QMainWindow):
                 item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
                 item.setForeground(QColor(27, 94, 32))  # Dark green text
     
+    def set_application_icon(self):
+        """Set the application icon with PyInstaller compatibility."""
+        try:
+            # Try multiple icon file paths for different deployment scenarios
+            possible_icon_paths = [
+                # Development environment
+                Path(__file__).parent.parent / "assets" / "icon.ico",
+                Path(__file__).parent.parent / "assets" / "icon.png",
+                # PyInstaller bundle (relative to executable)
+                Path(sys.executable).parent / "assets" / "icon.ico",
+                Path(sys.executable).parent / "assets" / "icon.png",
+                Path(sys.executable).parent / "icon.ico",
+                Path(sys.executable).parent / "icon.png",
+                # Current working directory
+                Path.cwd() / "assets" / "icon.ico",
+                Path.cwd() / "assets" / "icon.png",
+                Path.cwd() / "icon.ico",
+                Path.cwd() / "icon.png"
+            ]
+            
+            # Try each path until we find an icon
+            for icon_path in possible_icon_paths:
+                if icon_path.exists():
+                    try:
+                        icon = QIcon(str(icon_path))
+                        if not icon.isNull():
+                            self.setWindowIcon(icon)
+                            # Also set application icon for all windows
+                            app: QApplication = QApplication.instance()
+                            if app:
+                                app.setWindowIcon(icon)
+                            self.logger.debug(f"Successfully loaded icon from: {icon_path}")
+                            return
+                    except Exception as e:
+                        self.logger.debug(f"Failed to load icon from {icon_path}: {e}")
+                        continue
+            
+            self.logger.warning("No application icon found in any of the expected locations")
+            
+        except Exception as e:
+            self.logger.error(f"Error setting application icon: {e}")
+    
     def setup_ui(self):
         """Set up the user interface."""
-        self.setWindowTitle("Invoice Reconciliation Tool")
+        self.setWindowTitle("Invoice Reconciliator")
         self.setMinimumSize(800, 600)
         self.resize(800, 600)
         
-        # Set window icon
-        icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
-        if icon_path.exists():
-            try:
-                icon = QIcon(str(icon_path))
-                if not icon.isNull():
-                    self.setWindowIcon(icon)
-            except Exception:
-                # Silently ignore icon loading errors
-                pass
+        # Set window icon with PyInstaller compatibility
+        self.set_application_icon()
         
         # Create central widget
         central_widget = QWidget()
@@ -384,9 +505,18 @@ class MainWindow(QMainWindow):
         self.stop_button.setEnabled(False)
         button_layout.addWidget(self.stop_button)
         
-        clear_logs_btn = QPushButton("Clear Logs")
-        clear_logs_btn.clicked.connect(self.clear_logs)
-        button_layout.addWidget(clear_logs_btn)
+        # Pause/Resume button for processing workflow
+        self.pause_processing_btn = QPushButton("Pause Processing")
+        self.pause_processing_btn.clicked.connect(self.toggle_processing_pause)
+        self.pause_processing_btn.setEnabled(False)  # Only enabled during processing
+        button_layout.addWidget(self.pause_processing_btn)
+        
+        # Help button
+        help_btn = QPushButton("?")
+        help_btn.setMaximumWidth(30)
+        help_btn.setToolTip("Show User Guide (F1)")
+        help_btn.clicked.connect(self.show_user_guide)
+        button_layout.addWidget(help_btn)
         
         layout.addLayout(button_layout, 3, 0, 1, 2)
         
@@ -417,19 +547,18 @@ class MainWindow(QMainWindow):
         # Action buttons
         button_layout = QHBoxLayout()
         
-        refresh_btn = QPushButton("Refresh")
+        refresh_btn = QPushButton("Refresh Results")
         refresh_btn.clicked.connect(self.refresh_results)
         button_layout.addWidget(refresh_btn)
         
-        export_btn = QPushButton("Export Results")
-        export_btn.clicked.connect(self.export_results)
-        button_layout.addWidget(export_btn)
-        
-        # Import results button
         import_button = QPushButton("Import Results")
         import_button.clicked.connect(self.import_results)
         import_button.setToolTip("Import existing JSON result files from a folder")
         button_layout.addWidget(import_button)
+        
+        export_btn = QPushButton("Export Results")
+        export_btn.clicked.connect(self.export_results)
+        button_layout.addWidget(export_btn)
         
         open_output_btn = QPushButton("Open Output Folder")
         open_output_btn.clicked.connect(self.open_output_folder)
@@ -482,7 +611,15 @@ class MainWindow(QMainWindow):
         # Help menu
         help_menu = menubar.addMenu("Help")
         
-        about_action = QAction("About", self)
+        # User Guide action
+        user_guide_action = QAction("User Guide...", self)
+        user_guide_action.setShortcut("F1")
+        user_guide_action.triggered.connect(self.show_user_guide)
+        help_menu.addAction(user_guide_action)
+        
+        help_menu.addSeparator()
+        
+        about_action = QAction("About...", self)
         about_action.triggered.connect(self.show_about_dialog)
         help_menu.addAction(about_action)
         
@@ -530,17 +667,24 @@ class MainWindow(QMainWindow):
         """Update UI state based on processing status."""
         self.start_button.setEnabled(not processing)
         self.stop_button.setEnabled(processing)
+        self.pause_processing_btn.setEnabled(processing)
         self.input_dir_edit.setEnabled(not processing)
         self.output_dir_edit.setEnabled(not processing)
         
         if processing:
-            self.status_label.setText("Processing...")
-            self.status_label.setStyleSheet("font-weight: bold; color: orange;")
+            if self.is_processing_paused:
+                self.status_label.setText("Paused")
+                self.status_label.setStyleSheet("font-weight: bold; color: orange;")
+            else:
+                self.status_label.setText("Processing...")
+                self.status_label.setStyleSheet("font-weight: bold; color: blue;")
         else:
             self.status_label.setText("Ready")
             self.status_label.setStyleSheet("font-weight: bold; color: green;")
             self.current_file_label.setText("None")
             self.progress_bar.setValue(0)
+            self.is_processing_paused = False
+            self.pause_processing_btn.setText("Pause Processing")
     
     # Event handlers
     def browse_input_directory(self):
@@ -594,12 +738,25 @@ class MainWindow(QMainWindow):
             # Reload settings if they were saved
             self.load_settings()
     
+    def show_user_guide(self):
+        """Show the user guide help dialog."""
+        try:
+            help_dialog = HelpDialog(self)
+            help_dialog.exec()
+        except Exception as e:
+            self.logger.error(f"Error showing user guide: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Could not open user guide:\n{str(e)}"
+            )
+    
     def show_about_dialog(self):
         """Show the about dialog."""
         QMessageBox.about(
             self, 
-            "About Invoice Reconciliation Tool",
-            "Invoice Reconciliation Tool v1.0.0\n\n"
+            "About Invoice Reconciliator",
+            "Invoice Reconciliator v1.0.0\n\n"
             "An automated tool for processing and validating invoices\n"
             "against purchase orders using AI technology.\n\n"
             "© 2025 KDDI Corporation"
@@ -755,10 +912,26 @@ class MainWindow(QMainWindow):
         self.update_ui_state(processing=False)
         self.logger.info("Processing stopped by user")
     
-    def clear_logs(self):
-        """Clear the log viewer."""
-        if self.log_viewer:
-            self.log_viewer.clear()
+    def toggle_processing_pause(self):
+        """Toggle pause/resume for processing workflow."""
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.is_processing_paused = not self.is_processing_paused
+            
+            if self.is_processing_paused:
+                self.pause_processing_btn.setText("Resume Processing")
+                self.processing_thread.pause()
+                self.logger.info("Processing paused by user")
+                if self.log_viewer:
+                    self.log_viewer.add_log_message("INFO", "Processing paused by user")
+            else:
+                self.pause_processing_btn.setText("Pause Processing")
+                self.processing_thread.resume()
+                self.logger.info("Processing resumed by user")
+                if self.log_viewer:
+                    self.log_viewer.add_log_message("INFO", "Processing resumed by user")
+            
+            # Update UI state to reflect pause status
+            self.update_ui_state(processing=True)
     
     def import_results(self):
         """Import existing JSON result files from a folder."""
@@ -992,7 +1165,7 @@ class MainWindow(QMainWindow):
             if self.log_viewer:
                 self.log_viewer.add_log_message(level, message)
         except Exception as e:
-            print(f"Error displaying log message: {e}")
+            self.logger.error(f"Error displaying log message: {e}")
     
     def on_error_occurred(self, error: str):
         """Handle processing error."""
@@ -1046,7 +1219,7 @@ class MainWindow(QMainWindow):
     def add_result_to_table(self, result: dict):
         """Add a processing result to the results table."""
         try:
-            print(f"DEBUG: Adding result to table: {result}")  # Debug print
+            self.logger.debug(f"Adding result to table: {result}")
             
             row_count = self.result_table.rowCount()
             self.result_table.insertRow(row_count)
@@ -1057,11 +1230,22 @@ class MainWindow(QMainWindow):
             
             # Store the result data for later access using filename as key
             self.result_data[filename] = result
-            print(f"DEBUG: Stored result data for {filename}")  # Debug print
+            self.logger.debug(f"Stored result data for {filename}")
 
             # Status with color coding (check multiple possible field names)
-            status = result.get('approval_status', result.get('status', 'Unknown'))
-            print(f"DEBUG: Status for {filename}: {status}")  # Debug print
+            status = result.get('approval_status', result.get('status', 'UNKNOWN'))
+            
+            # Handle validation failures and empty status
+            if not status or status in [None, '', 'None']:
+                # Check if there's an error or failure indicated
+                if result.get('error') or result.get('validation_failed') or result.get('processing_failed'):
+                    status = 'FAILED'
+                elif result.get('validation_issues_count', 0) > 0:
+                    status = 'REQUIRES REVIEW'
+                else:
+                    status = 'UNKNOWN'
+            
+            self.logger.debug(f"Status for {filename}: {status}")
             status_item = QTableWidgetItem(status)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
@@ -1078,7 +1262,7 @@ class MainWindow(QMainWindow):
                 if 'validation_issues' in result and isinstance(result['validation_issues'], list):
                     issues_count = len(result['validation_issues'])
                 
-            print(f"DEBUG: Issues count for {filename}: {issues_count}")  # Debug print
+            self.logger.debug(f"Issues count for {filename}: {issues_count}")
             
             issues_item = QTableWidgetItem(str(issues_count))
             issues_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1093,7 +1277,7 @@ class MainWindow(QMainWindow):
             actions_layout = QHBoxLayout(actions_widget)
             actions_layout.setContentsMargins(4, 2, 4, 2)
             
-            print(f"DEBUG: Creating action buttons for {filename}")  # Debug print
+            self.logger.debug(f"Creating action buttons for {filename}")
             
             # View button (always available)
             view_btn = QPushButton("View")
@@ -1108,7 +1292,7 @@ class MainWindow(QMainWindow):
                 pdf_btn.setMaximumHeight(25)
                 pdf_btn.clicked.connect(lambda checked, r=row_count: self.open_pdf(r))
                 actions_layout.addWidget(pdf_btn)
-                print(f"DEBUG: Added PDF button for {filename}")  # Debug print
+                self.logger.debug(f"Added PDF button for {filename}")
             
             # Retry button (if failed)
             if status in ['FAILED', 'failed']:
@@ -1117,21 +1301,20 @@ class MainWindow(QMainWindow):
                 retry_btn.setStyleSheet("background-color: #FF9800; color: white;")
                 retry_btn.clicked.connect(lambda checked, r=row_count: self.retry_processing(r))
                 actions_layout.addWidget(retry_btn)
-                print(f"DEBUG: Added Retry button for {filename}")  # Debug print
+                self.logger.debug(f"Added Retry button for {filename}")
             
             actions_layout.addStretch()
             self.result_table.setCellWidget(row_count, 3, actions_widget)
             
-            print(f"DEBUG: Successfully added {filename} to table at row {row_count}")  # Debug print
+            self.logger.debug(f"Successfully added {filename} to table at row {row_count}")
             
             # Auto-scroll to new row
             self.result_table.scrollToBottom()
             
         except Exception as e:
             self.logger.error(f"Error adding result to table: {e}")
-            print(f"ERROR: Error adding result to table: {e}")  # Debug print
             import traceback
-            traceback.print_exc()  # Print full traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
     
     def view_result_details(self, row: int):
         """View detailed results for a specific row."""
