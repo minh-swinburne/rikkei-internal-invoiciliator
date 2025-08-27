@@ -10,6 +10,10 @@ import shutil
 from pathlib import Path
 import platform
 
+# Add src directory to path to import utils
+sys.path.insert(0, str(Path(__file__).parent))
+from src.utils import get_application_version
+
 
 class BuildManager:
     """Manages the complete build process for Invoice Reconciliator."""
@@ -96,8 +100,8 @@ class BuildManager:
     
     def build_executable(self) -> bool:
         """Build the executable using PyInstaller."""
-        print("🔨 Building executable...")
-        
+        print(f"🔨 Building executable for Invoice Reconciliator v{get_application_version()}...")
+
         spec_file = self.project_root / "build.spec"
         
         if not spec_file.exists():
@@ -144,7 +148,7 @@ class BuildManager:
         # For now, we'll create a simple zip package
         # Later this can be enhanced with proper installer tools
         
-        version = self.get_version()
+        version = get_application_version()
         installer_name = f"InvoiceReconciliator-v{version}-{self.system}.zip"
         installer_path = self.dist_dir / installer_name
 
@@ -186,8 +190,10 @@ class BuildManager:
         # This would require NSIS or Inno Setup to be installed
         # For now, we'll create the configuration but not execute
         
-        nsis_script = self.create_nsis_script()
-        nsis_path = self.project_root / "installer.nsi"
+        version = get_application_version()
+        nsis_script = self.create_nsis_script(version)
+        nsis_name = f"InvoiceReconciliator-v{version}-installer.nsi"
+        nsis_path = self.dist_dir / nsis_name
         
         with open(nsis_path, 'w') as f:
             f.write(nsis_script)
@@ -198,10 +204,8 @@ class BuildManager:
         
         return True
     
-    def create_nsis_script(self) -> str:
-        """Create NSIS installer script."""
-        version = self.get_version()
-        
+    def create_nsis_script(self, version: str) -> str:
+        """Create NSIS installer script."""        
         return f'''
 ; Invoice Reconciliator NSIS Installer Script
 ; Generated automatically by build script
@@ -290,23 +294,9 @@ Section "Uninstall"
 SectionEnd
 '''
     
-    def get_version(self) -> str:
-        """Get application version."""
-        # Try to read from a version file or git tag
-        try:
-            result = subprocess.run(
-                ["git", "describe", "--tags", "--abbrev=0"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            return result.stdout.strip().lstrip('v')
-        except:
-            return "1.0.0"  # Default version
-    
     def create_readme(self) -> str:
         """Create README for the installer package."""
-        version = self.get_version()
+        version = get_application_version()
         
         return f'''
 Invoice Reconciliator v{version}

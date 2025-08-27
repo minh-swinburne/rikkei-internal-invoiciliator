@@ -12,6 +12,7 @@ from PySide6.QtGui import QIcon
 
 from .main_window import MainWindow
 from ..logging_config import setup_logging, get_module_logger
+from ..utils import get_application_version
 
 
 class InvoiceReconciliationApp:
@@ -32,7 +33,7 @@ class InvoiceReconciliationApp:
         
         # Set application properties
         app.setApplicationName("Invoice Reconciliator")
-        app.setApplicationVersion("1.0.0")
+        app.setApplicationVersion(get_application_version())
         app.setOrganizationName("KDDI")
         app.setOrganizationDomain("kddi.com")
         

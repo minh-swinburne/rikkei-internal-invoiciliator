@@ -1,8 +1,9 @@
 """
-
+Utility functions for the application.
 """
 
 import re
+import subprocess
 from logging import Logger
 from pathlib import Path
 from datetime import datetime
@@ -13,6 +14,38 @@ import json
 def get_timestamp():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return timestamp
+
+
+def get_application_version() -> str:
+    """
+    Get application version from git tags or fallback to default.
+    
+    This function tries to get the version from git tags first (e.g., 'v1.1.0'),
+    then falls back to a default version if git is not available or no tags exist.
+    
+    Returns:
+        Version string (e.g., '1.1.0')
+    """
+    try:
+        # Try to get version from git tags
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=get_project_root()  # Ensure we're in the right directory
+        )
+        # Strip whitespace and remove 'v' prefix if present
+        version = result.stdout.strip().lstrip('v')
+        if version:
+            return version
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        # Git not available, no tags, or other error - use fallback
+        pass
+    
+    # Fallback version
+    return "1.0.0"
+
 
 def get_relative_path(absolute_path: str | Path, base_path: str | Path = None) -> str:
     """

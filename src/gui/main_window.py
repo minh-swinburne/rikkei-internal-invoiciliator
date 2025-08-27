@@ -25,7 +25,7 @@ from ..core import InvoiceReconciliationEngine
 from ..core.thread import ProcessingThread, RetryThread
 from ..settings import settings
 from ..logging_config import get_module_logger
-from ..utils import get_relative_path, get_project_root, load_json, normalize_path_display
+from ..utils import get_relative_path, get_project_root, load_json, normalize_path_display, get_application_version
 
 
 class MainWindow(QMainWindow):
@@ -776,7 +776,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self, 
             "About Invoice Reconciliator",
-            "Invoice Reconciliator v1.0.0\n\n"
+            f"Invoice Reconciliator v{get_application_version()}\n\n"
             "An automated tool for processing and validating invoices\n"
             "against purchase orders using AI technology.\n\n"
             "© 2025 KDDI Corporation"

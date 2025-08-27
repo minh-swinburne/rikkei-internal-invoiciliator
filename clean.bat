@@ -14,10 +14,8 @@ if not exist ".venv\Scripts\activate.bat" (
 
 call .venv\Scripts\activate.bat
 
-echo 🧹 Cleaning build directories...
 python build.py clean
 
-echo ✅ Build directories cleaned!
 echo You can now run a fresh build.
 
 pause
