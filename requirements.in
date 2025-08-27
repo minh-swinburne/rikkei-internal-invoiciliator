@@ -1,11 +1,21 @@
-darkdetect
+# Data Processing
 openai
 pandas
-pillow
 pymupdf
+
+# GUI
 pyside6
-python-dotenv
+
+# Models
 pydantic>=2.0.0
+
+# Configuration
+python-dotenv
 pydantic-settings>=2.0.0
 
-pyinstaller
+# Packaging & Distribution
+pyinstaller   # For building executables
+
+# Utilities
+darkdetect
+pillow
