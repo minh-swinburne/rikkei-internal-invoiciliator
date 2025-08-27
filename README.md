@@ -1,4 +1,4 @@
-# Invoice Reconciliator v1.0
+# Invoice Reconciliator v1.1
 
 ## Overview
 A professional Python-based application for automated invoice and purchase order (PO) reconciliation. This tool extracts data from merged PDF files, processes them using AI (via OpenRouter API), validates against business rules, and provides comprehensive approval workflows with both GUI and CLI interfaces.
@@ -169,6 +169,33 @@ python gui_launcher.py
 - **🎨 Theme Support**: Professional themes with dark/light modes
 - **📄 PDF Viewer**: Built-in PDF viewing for processed documents
 
+### Screenshots
+
+#### Main Interface
+![Main Window - Processing Results](assets/main-window_requires-review.png)
+*Main interface showing processing results with REQUIRES REVIEW status*
+
+![Main Window - Error Handling](assets/main-window_error.png)
+*Error handling and status display in the main interface*
+
+#### Advanced Configuration
+![Settings - Processing Options](assets/settings_processing.png)
+*Processing settings tab with PDF stamping and validation options*
+
+![Settings - LLM Configuration](assets/settings_llm.png)
+*LLM configuration with API key setup and model selection*
+
+#### Detailed Result Viewer
+![Result Viewer - Summary](assets/result-viewer_summary.png)
+*Detailed result viewer showing processing summary and quick actions*
+
+![Result Viewer - Validation Details](assets/result-viewer_validation.png)
+*Validation tab showing issues and notes without redundant numbering*
+
+#### Quick Start Guide
+![User Guide - Quick Start](assets/user-guide_quick-start.png)
+*Integrated help system with step-by-step quick start guide*
+
 ### 💻 Command Line Interface
 The application provides a comprehensive CLI with the following options:
 
@@ -303,6 +330,12 @@ python build.py install  # 📦 Create installer
 - **🏷️ Professional Stamping**: Responsive sizing, gradient backgrounds, configurable positioning
 
 ## Version History
+- **v1.1.0** - Enhanced reliability and user experience
+  - Single file retry system for failed processing
+  - Improved item data structure with separate name/description fields
+  - Fixed always-accept stamp behavior and duplicate logging issues
+  - Enhanced error handling and result display accuracy
+  - Added comprehensive screenshots and visual documentation
 - **v1.0.0** - Initial release with full GUI and CLI interfaces
   - Complete AI-powered invoice reconciliation
   - Professional GUI with advanced settings
@@ -314,5 +347,5 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ---
 
-**🎉 Ready for Production Use** - Version 1.0 includes all enterprise features for professional invoice reconciliation workflows.
+**🚀 Enhanced in v1.1** - Improved reliability, better error handling, and enhanced user experience with comprehensive visual documentation.
 
