@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File Manager Enhancements**: Improved PDF processing to separate stamp text from file directory placement logic
 - **Logger Optimization**: Streamlined logging system using root logger propagation to eliminate handler duplication
 
-## [1.0.0] - 2025-08-27
+## [1.0.0] - 2025-08-22
 
 ### 🎉 Initial Release
 - **AI-Powered Processing**: Complete invoice and PO reconciliation using OpenRouter API with Google Gemini 2.0 Flash
