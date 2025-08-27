@@ -22,130 +22,10 @@ from .result_viewer import ResultDetailViewer
 from .help_dialog import HelpDialog
 from .qt_logging import QtLogHandler, LogCapture
 from ..core import InvoiceReconciliationEngine
+from ..core.thread import ProcessingThread, RetryThread
 from ..settings import settings
 from ..logging_config import get_module_logger
 from ..utils import get_relative_path, get_project_root, load_json, normalize_path_display
-
-
-class ProcessingThread(QThread):
-    """Background thread for processing PDFs."""
-    
-    progress_updated = Signal(dict)
-    file_started = Signal(dict)
-    file_completed = Signal(dict)
-    workflow_completed = Signal(dict)
-    log_message = Signal(str, str)  # level, message
-    error_occurred = Signal(str)
-    
-    def __init__(self, engine: InvoiceReconciliationEngine, input_dir: Path):
-        super().__init__()
-        self.engine = engine
-        self.input_dir = input_dir
-        self.should_stop = False
-        self.is_paused = False
-        self.pause_event = QTimer()  # Use QTimer for pause control
-        
-        # Set up logging capture
-        self.log_handler = QtLogHandler()
-        self.log_handler.log_message.connect(self.log_message)
-        self.log_capture = LogCapture(self.log_handler)
-    
-    def run(self):
-        """Run the processing in background thread."""
-        try:
-            # Start log capture for real-time GUI updates
-            with self.log_capture:
-                # Set up progress callbacks
-                self.engine.on_progress_update = self.emit_progress_update
-                self.engine.on_file_started = self.emit_file_started
-                self.engine.on_file_completed = self.emit_file_completed
-                self.engine.on_workflow_completed = self.emit_workflow_completed
-                
-                # Emit startup message
-                self.log_message.emit("INFO", f"Starting processing of directory: {self.input_dir}")
-                
-                # Start workflow
-                workflow = self.engine.start_workflow(self.input_dir)
-                
-                if workflow.total_files == 0:
-                    self.log_message.emit("WARNING", "No PDF files found in input directory")
-                    return
-                
-                self.log_message.emit("INFO", f"Found {workflow.total_files} PDF files to process")
-                
-                # Process files
-                self.engine.process_workflow()
-                
-        except Exception as e:
-            self.log_message.emit("ERROR", f"Processing failed: {str(e)}")
-            self.error_occurred.emit(str(e))
-    
-    def emit_progress_update(self, progress: dict):
-        """Emit progress update with error handling."""
-        try:
-            # Check for pause
-            self._check_pause()
-            if self.should_stop:
-                return
-                
-            self.progress_updated.emit(progress)
-        except Exception as e:
-            self.log_message.emit("ERROR", f"Error emitting progress update: {e}")
-    
-    def emit_file_started(self, result):
-        """Emit file started signal with error handling."""
-        try:
-            # Check for pause
-            self._check_pause()
-            if self.should_stop:
-                return
-                
-            result_dict = result.model_dump() if hasattr(result, 'model_dump') else result
-            self.file_started.emit(result_dict)
-        except Exception as e:
-            self.log_message.emit("ERROR", f"Error emitting file started: {e}")
-    
-    def emit_file_completed(self, result):
-        """Emit file completed signal with error handling."""
-        try:
-            result_dict = result.model_dump() if hasattr(result, 'model_dump') else result
-            self.file_completed.emit(result_dict)
-        except Exception as e:
-            self.log_message.emit("ERROR", f"Error emitting file completed: {e}")
-    
-    def emit_workflow_completed(self, workflow):
-        """Emit workflow completed signal with error handling."""
-        try:
-            summary = workflow.get_summary() if hasattr(workflow, 'get_summary') else workflow
-            self.workflow_completed.emit(summary)
-        except Exception as e:
-            self.log_message.emit("ERROR", f"Error emitting workflow completed: {e}")
-    
-    def stop(self):
-        """Request to stop processing."""
-        self.should_stop = True
-        self.log_message.emit("INFO", "Stop requested by user")
-        if self.engine:
-            try:
-                self.engine.cancel_workflow()
-                self.log_message.emit("INFO", "Processing cancelled")
-            except Exception as e:
-                self.log_message.emit("ERROR", f"Error during cancellation: {e}")
-    
-    def pause(self):
-        """Pause the processing."""
-        self.is_paused = True
-        self.log_message.emit("INFO", "Processing thread paused")
-    
-    def resume(self):
-        """Resume the processing."""
-        self.is_paused = False
-        self.log_message.emit("INFO", "Processing thread resumed")
-    
-    def _check_pause(self):
-        """Check if processing should be paused and wait if needed."""
-        while self.is_paused and not self.should_stop:
-            self.msleep(100)  # Sleep for 100ms and check again
 
 
 class MainWindow(QMainWindow):
@@ -166,6 +46,7 @@ class MainWindow(QMainWindow):
         # Core components
         self.engine: Optional[InvoiceReconciliationEngine] = None
         self.processing_thread: Optional[ProcessingThread] = None
+        self.retry_thread: Optional[RetryThread] = None
         self.output_dir: Optional[Path] = None
         self.is_processing_paused: bool = False
         
@@ -216,11 +97,21 @@ class MainWindow(QMainWindow):
         """Set up permanent log capture to show all application logs in the GUI."""
         import logging
         
-        # List of all logger names that should be captured
-        logger_names = [
-            'invoice_reconciliator',
+        # Only add handler to the root logger to avoid duplicates from propagation
+        root_logger = logging.getLogger('invoice_reconciliator')
+        
+        # Only add if not already present
+        if self.log_handler not in root_logger.handlers:
+            root_logger.addHandler(self.log_handler)
+            # Set level to capture all messages
+            if root_logger.level == logging.NOTSET or root_logger.level > logging.DEBUG:
+                root_logger.setLevel(logging.DEBUG)
+        
+        # Ensure all child loggers propagate to the root logger (this is default behavior)
+        # but just to be explicit about it:
+        child_logger_names = [
             'invoice_reconciliator.gui',
-            'invoice_reconciliator.core',
+            'invoice_reconciliator.core', 
             'invoice_reconciliator.engine',
             'invoice_reconciliator.pdf_processor',
             'invoice_reconciliator.llm_extractor',
@@ -229,37 +120,22 @@ class MainWindow(QMainWindow):
             'invoice_reconciliator.service_manager'
         ]
         
-        # Add our handler to all relevant loggers
-        for logger_name in logger_names:
+        for logger_name in child_logger_names:
             logger = logging.getLogger(logger_name)
-            # Only add if not already present
-            if self.log_handler not in logger.handlers:
-                logger.addHandler(self.log_handler)
-                # Set level to capture all messages
-                if logger.level == logging.NOTSET or logger.level > logging.DEBUG:
-                    logger.setLevel(logging.DEBUG)
+            # Ensure propagation is enabled (default is True)
+            logger.propagate = True
+            # Set appropriate level for child loggers
+            if logger.level == logging.NOTSET or logger.level > logging.DEBUG:
+                logger.setLevel(logging.DEBUG)
     
     def closeEvent(self, event):
         """Handle application close event to clean up log handlers."""
         import logging
         
-        # Remove our handler from all loggers to prevent issues
-        logger_names = [
-            'invoice_reconciliator',
-            'invoice_reconciliator.gui',
-            'invoice_reconciliator.core',
-            'invoice_reconciliator.engine',
-            'invoice_reconciliator.pdf_processor',
-            'invoice_reconciliator.llm_extractor',
-            'invoice_reconciliator.validator',
-            'invoice_reconciliator.file_manager',
-            'invoice_reconciliator.service_manager'
-        ]
-        
-        for logger_name in logger_names:
-            logger = logging.getLogger(logger_name)
-            if self.log_handler in logger.handlers:
-                logger.removeHandler(self.log_handler)
+        # Remove our handler from the root logger only
+        root_logger = logging.getLogger('invoice_reconciliator')
+        if self.log_handler in root_logger.handlers:
+            root_logger.removeHandler(self.log_handler)
         
         # Call parent close event
         super().closeEvent(event)
@@ -339,6 +215,108 @@ class MainWindow(QMainWindow):
             else:
                 item.setBackground(QColor(76, 175, 80, 77))  # Nice green with 30% opacity
                 item.setForeground(QColor(27, 94, 32))  # Dark green text
+    
+    def _resize_table_to_fit_content(self):
+        """Resize table to better fit its content while maintaining user column sizes."""
+        try:
+            if not self.result_table or self.result_table.rowCount() == 0:
+                return
+            
+            # Resize rows to content
+            self.result_table.resizeRowsToContents()
+            
+            # Optionally adjust the table height to show all rows (with a reasonable max)
+            row_count = self.result_table.rowCount()
+            if row_count > 0:
+                # Calculate total height needed
+                header_height = self.result_table.horizontalHeader().height()
+                row_height = self.result_table.rowHeight(0)  # Assume all rows same height
+                total_height = header_height + (row_height * min(row_count, 10))  # Max 10 rows visible
+                
+                # Set a reasonable maximum height to avoid taking too much space
+                max_height = 400
+                preferred_height = min(total_height + 20, max_height)  # +20 for margins
+                
+                # Don't set if current height is reasonable
+                current_height = self.result_table.height()
+                if abs(current_height - preferred_height) > 50:  # Only resize if significant difference
+                    self.result_table.setMinimumHeight(min(150, preferred_height))
+                    self.result_table.setMaximumHeight(max_height)
+            
+            self.logger.debug(f"Resized table to fit {row_count} rows")
+            
+        except Exception as e:
+            self.logger.error(f"Error resizing table: {e}")
+    
+    def _show_table_context_menu(self, position):
+        """Show context menu for the result table."""
+        try:
+            from PySide6.QtWidgets import QMenu
+            
+            menu = QMenu(self)
+            
+            # Resize to fit content action
+            resize_action = menu.addAction("Resize Columns to Fit Content")
+            resize_action.triggered.connect(self._resize_columns_to_content)
+            
+            # Reset column widths action
+            reset_action = menu.addAction("Reset Column Widths")
+            reset_action.triggered.connect(self._reset_column_widths)
+            
+            menu.addSeparator()
+            
+            # Copy action (if there's a selection)
+            if self.result_table.selectedItems():
+                copy_action = menu.addAction("Copy Selected")
+                copy_action.triggered.connect(self._copy_selected_cells)
+            
+            # Show menu at cursor position
+            menu.exec(self.result_table.mapToGlobal(position))
+            
+        except Exception as e:
+            self.logger.error(f"Error showing context menu: {e}")
+    
+    def _resize_columns_to_content(self):
+        """Resize columns to fit their content."""
+        try:
+            self.result_table.resizeColumnsToContents()
+            self.logger.debug("Resized columns to fit content")
+        except Exception as e:
+            self.logger.error(f"Error resizing columns: {e}")
+    
+    def _reset_column_widths(self):
+        """Reset column widths to default values."""
+        try:
+            self.result_table.setColumnWidth(0, 360)  # File Name
+            self.result_table.setColumnWidth(1, 120)  # Status
+            self.result_table.setColumnWidth(2, 100)   # Issues
+            self.result_table.setColumnWidth(3, 200)  # Actions
+            self.logger.debug("Reset column widths to defaults")
+        except Exception as e:
+            self.logger.error(f"Error resetting column widths: {e}")
+    
+    def _copy_selected_cells(self):
+        """Copy selected cells to clipboard."""
+        try:
+            from PySide6.QtGui import QGuiApplication
+            
+            selected_items = self.result_table.selectedItems()
+            if not selected_items:
+                return
+            
+            # Get the text of all selected items
+            text_data = []
+            for item in selected_items:
+                if item.text():
+                    text_data.append(item.text())
+            
+            if text_data:
+                clipboard_text = "\t".join(text_data)
+                QGuiApplication.clipboard().setText(clipboard_text)
+                self.logger.debug(f"Copied {len(text_data)} cells to clipboard")
+            
+        except Exception as e:
+            self.logger.error(f"Error copying to clipboard: {e}")
     
     def set_application_icon(self):
         """Set the application icon with PyInstaller compatibility."""
@@ -541,12 +519,24 @@ class MainWindow(QMainWindow):
         self.result_table.setColumnCount(4)
         self.result_table.setHorizontalHeaderLabels(["File Name", "Status", "Issues", "Actions"])
         
-        # Set column widths
+        # Set column widths - all interactive but with different default sizes
         header = self.result_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        
+        # Set minimum and default column widths
+        header.setMinimumSectionSize(80)
+        header.setStretchLastSection(True)
+        self.result_table.setColumnWidth(0, 360)  # File Name - wider default
+        self.result_table.setColumnWidth(1, 120)  # Status
+        self.result_table.setColumnWidth(2, 100)   # Issues
+        # self.result_table.setColumnWidth(3, 200)  # Actions
+        
+        # Enable sorting
+        self.result_table.setSortingEnabled(True)
+        
+        # Set up context menu for the table
+        self.result_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.result_table.customContextMenuRequested.connect(self._show_table_context_menu)
         
         # Enable double-click to view details
         self.result_table.doubleClicked.connect(self.on_result_double_clicked)
@@ -628,8 +618,6 @@ class MainWindow(QMainWindow):
         user_guide_action.setShortcut("F1")
         user_guide_action.triggered.connect(self.show_user_guide)
         help_menu.addAction(user_guide_action)
-        
-        help_menu.addSeparator()
         
         about_action = QAction("About...", self)
         about_action.triggered.connect(self.show_about_dialog)
@@ -920,11 +908,13 @@ class MainWindow(QMainWindow):
             # Clear previous results
             self.result_table.setRowCount(0)
             self.result_data.clear()  # Clear stored result data
-            if self.log_viewer:
-                self.log_viewer.add_log_message("INFO", "=== Processing Started ===")
-                self.log_viewer.add_log_message("INFO", f"Input directory: {input_dir}")
-                self.log_viewer.add_log_message("INFO", f"Output directory: {self.output_dir}")
-                self.log_viewer.add_log_message("INFO", f"Found {len(pdf_files)} PDF files")
+            self._resize_table_to_fit_content()  # Reset table size
+            
+            # Log processing start info - these will be captured by the permanent log handler
+            self.logger.info("=== Processing Started ===")
+            self.logger.info(f"Input directory: {input_dir}")
+            self.logger.info(f"Output directory: {self.output_dir}")
+            self.logger.info(f"Found {len(pdf_files)} PDF files")
             
             # Start processing thread
             self.processing_thread = ProcessingThread(self.engine, input_dir)
@@ -932,7 +922,7 @@ class MainWindow(QMainWindow):
             self.processing_thread.file_started.connect(self.on_file_started)
             self.processing_thread.file_completed.connect(self.on_file_completed)
             self.processing_thread.workflow_completed.connect(self.on_workflow_completed)
-            self.processing_thread.log_message.connect(self.on_log_message)
+            # Note: log_message connection removed - using permanent log handler instead
             self.processing_thread.error_occurred.connect(self.on_error_occurred)
             self.processing_thread.start()
             
@@ -943,8 +933,6 @@ class MainWindow(QMainWindow):
             error_msg = f"Failed to start processing: {str(e)}"
             QMessageBox.critical(self, "Error", error_msg)
             self.logger.error(error_msg, exc_info=True)
-            if self.log_viewer:
-                self.log_viewer.add_log_message("ERROR", error_msg)
     
     def stop_processing(self):
         """Stop the PDF processing."""
@@ -964,14 +952,10 @@ class MainWindow(QMainWindow):
                 self.pause_processing_btn.setText("Resume Processing")
                 self.processing_thread.pause()
                 self.logger.info("Processing paused by user")
-                if self.log_viewer:
-                    self.log_viewer.add_log_message("INFO", "Processing paused by user")
             else:
                 self.pause_processing_btn.setText("Pause Processing")
                 self.processing_thread.resume()
                 self.logger.info("Processing resumed by user")
-                if self.log_viewer:
-                    self.log_viewer.add_log_message("INFO", "Processing resumed by user")
             
             # Update UI state to reflect pause status
             self.update_ui_state(processing=True)
@@ -1002,6 +986,7 @@ class MainWindow(QMainWindow):
             # Clear current results
             self.result_data.clear()
             self.result_table.setRowCount(0)
+            self._resize_table_to_fit_content()  # Reset table size
             
             imported_count = 0
             failed_count = 0
@@ -1030,8 +1015,8 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Import Complete", message)
             self.logger.info(f"Imported {imported_count} results from {folder}")
             
-            if self.log_viewer:
-                self.log_viewer.add_log_message("INFO", f"Imported {imported_count} result files")
+            # Log import completion - this will be captured by the permanent log handler
+            self.logger.info(f"Imported {imported_count} result files")
             
         except Exception as e:
             error_msg = f"Error importing results: {str(e)}"
@@ -1050,6 +1035,14 @@ class MainWindow(QMainWindow):
                 if not self.processing_thread.wait(3000):  # Wait 3 seconds
                     self.logger.warning("Processing thread did not stop gracefully")
                     self.processing_thread.kill()
+            
+            # Stop any running retry processing
+            if self.retry_thread and self.retry_thread.isRunning():
+                self.logger.info("Stopping retry thread...")
+                self.retry_thread.terminate()
+                if not self.retry_thread.wait(3000):  # Wait 3 seconds
+                    self.logger.warning("Retry thread did not stop gracefully")
+                    self.retry_thread.kill()
             
             # Save settings
             self.save_settings()
@@ -1079,21 +1072,28 @@ class MainWindow(QMainWindow):
             "Feature Not Implemented",
             full_description
         )
-    
-    # def refresh_results(self):
-    #     """Refresh the results table."""
-    #     self.show_not_implemented_dialog(
-    #         "Results Refresh",
-    #         "This would reload the results table from the output directory and update the display with any new or modified result files."
-    #     )
-    
-    # def export_results(self):
-    #     """Export processing results."""
-    #     self.show_not_implemented_dialog(
-    #         "Results Export",
-    #         "This would allow exporting the processing results to various formats such as CSV, Excel, or detailed PDF reports for analysis and record-keeping."
-    #     )
-    
+
+    def get_result_issues(self, result: dict) -> list[str]:
+        """Get the list of validation issues from a processing result."""
+        return result.get('validation_result', {}).get('issues', [])
+
+    def get_result_status(self, result: dict) -> str:
+        """Get the status of a processing result."""
+        # Status with color coding (check multiple possible field names)
+        status = result.get('approval_status', result.get('status', None))
+        
+        # Handle validation failures and empty status
+        if not status or str(status).lower() in ['none', 'failed']:
+            # Check if there's an error or failure indicated
+            if result.get('error_message') or result.get('error_details') or result.get('status') == 'failed':
+                return 'FAILED'
+            issues_count = len(self.get_result_issues(result))
+            if issues_count > 0:
+                status = 'REQUIRES REVIEW'
+            else:
+                status = 'UNKNOWN'
+        return status
+
     def open_output_folder(self):
         """Open the output folder in file explorer."""
         if self.output_dir and self.output_dir.exists():
@@ -1137,10 +1137,7 @@ class MainWindow(QMainWindow):
             filename = Path(result.get('pdf_path', 'Unknown')).name
             self.current_file_label.setText(filename)
             
-            # Add to log
-            if self.log_viewer:
-                self.log_viewer.add_log_message("INFO", f"Started processing: {filename}")
-            
+            # Log message will be handled by the permanent log capture, no need to add manually
             self.logger.info(f"Started processing: {filename}")
             
         except Exception as e:
@@ -1150,12 +1147,9 @@ class MainWindow(QMainWindow):
         """Handle file processing completion."""
         try:
             filename = Path(result.get('pdf_path', 'Unknown')).name
-            status = result.get('approval_status', 'Unknown')
-            
-            # Add to log with status
-            if self.log_viewer:
-                self.log_viewer.add_log_message("INFO", f"Completed: {filename} - {status}")
-            
+            status = self.get_result_status(result)
+
+            # Log message will be handled by the permanent log capture, no need to add manually
             self.logger.info(f"Completed processing: {filename} - {status}")
             
             # Add to results table
@@ -1174,11 +1168,10 @@ class MainWindow(QMainWindow):
             total = summary.get('total_files', 0)
             success_rate = summary.get('success_rate', 0)
             
-            # Add completion log
-            if self.log_viewer:
-                self.log_viewer.add_log_message("INFO", "=== Processing Completed ===")
-                self.log_viewer.add_log_message("INFO", f"Total: {total}, Success: {completed}, Failed: {failed}")
-                self.log_viewer.add_log_message("INFO", f"Success rate: {success_rate:.1f}%")
+            # Log completion info - these will be captured by the permanent log handler
+            self.logger.info("=== Processing Completed ===")
+            self.logger.info(f"Total: {total}, Success: {completed}, Failed: {failed}")
+            self.logger.info(f"Success rate: {success_rate:.1f}%")
             
             # Show completion dialog
             completion_msg = (
@@ -1217,9 +1210,8 @@ class MainWindow(QMainWindow):
             
             error_msg = f"An error occurred during processing:\n\n{error}"
             
-            # Add to log
-            if self.log_viewer:
-                self.log_viewer.add_log_message("ERROR", f"Processing error: {error}")
+            # Log error - this will be captured by the permanent log handler
+            self.logger.error(f"Processing error: {error}")
             
             # Show error dialog with options
             msg_box = QMessageBox(self)
@@ -1242,23 +1234,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Error handling processing error: {e}")
     
-    def retry_processing(self):
-        """Retry the last processing operation."""
-        try:
-            reply = QMessageBox.question(
-                self,
-                "Retry Processing",
-                "Do you want to retry processing with the same settings?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                self.start_processing()
-                
-        except Exception as e:
-            self.logger.error(f"Error during retry: {e}")
-    
     def add_result_to_table(self, result: dict):
         """Add a processing result to the results table."""
         try:
@@ -1276,18 +1251,8 @@ class MainWindow(QMainWindow):
             self.logger.debug(f"Stored result data for {filename}")
 
             # Status with color coding (check multiple possible field names)
-            status = result.get('approval_status', result.get('status', 'UNKNOWN'))
-            
-            # Handle validation failures and empty status
-            if not status or status in [None, '', 'None']:
-                # Check if there's an error or failure indicated
-                if result.get('error') or result.get('validation_failed') or result.get('processing_failed'):
-                    status = 'FAILED'
-                elif result.get('validation_issues_count', 0) > 0:
-                    status = 'REQUIRES REVIEW'
-                else:
-                    status = 'UNKNOWN'
-            
+            status = self.get_result_status(result)
+
             self.logger.debug(f"Status for {filename}: {status}")
             status_item = QTableWidgetItem(status)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1299,7 +1264,7 @@ class MainWindow(QMainWindow):
             self.result_table.setItem(row_count, 1, status_item)
             
             # Issues count (check multiple possible field names)
-            issues_count = result.get('validation_issues_count', 0)
+            issues_count = len(self.get_result_issues(result))
             if issues_count is None or issues_count == 0:
                 # Try alternative field names
                 if 'validation_issues' in result and isinstance(result['validation_issues'], list):
@@ -1344,7 +1309,7 @@ class MainWindow(QMainWindow):
                 retry_btn = QPushButton("Retry")
                 retry_btn.setToolTip("Retry processing this failed file")
                 retry_btn.setMaximumHeight(25)
-                retry_btn.setStyleSheet("background-color: #FF9800; color: white;")
+                # Use default theme styling (removed custom background color)
                 retry_btn.clicked.connect(lambda checked, r=row_count: self.retry_processing(r))
                 actions_layout.addWidget(retry_btn)
                 self.logger.debug(f"Added Retry button for {filename}")
@@ -1356,6 +1321,9 @@ class MainWindow(QMainWindow):
             
             # Auto-scroll to new row
             self.result_table.scrollToBottom()
+            
+            # Resize table to fit new content
+            self._resize_table_to_fit_content()
             
         except Exception as e:
             self.logger.error(f"Error adding result to table: {e}")
@@ -1469,23 +1437,118 @@ class MainWindow(QMainWindow):
             
             filename = filename_item.text()
             
+            # Get stored result data to find the original PDF path
+            if filename not in self.result_data:
+                QMessageBox.warning(
+                    self, 
+                    "Result Not Found", 
+                    f"No stored result data found for \"{filename}\""
+                )
+                return
+            
+            result_data = self.result_data[filename]
+            original_pdf_path = result_data.get('pdf_path')
+            
+            if not original_pdf_path or not Path(original_pdf_path).exists():
+                QMessageBox.warning(
+                    self, 
+                    "PDF Not Found", 
+                    f"Original PDF file not found for \"{filename}\"\n"
+                    f"Expected path: {original_pdf_path}"
+                )
+                return
+            
             reply = QMessageBox.question(
                 self, 
                 "Retry Processing",
-                f"Are you sure you want to retry processing for {filename}?\n"
-                f"This will reprocess the file with current settings.",
+                f"Are you sure you want to retry processing for {filename}?\n\n"
+                f"This will reprocess the file with current settings and generate a new result.\n"
+                f"The original result will be preserved for comparison.\n\n"
+                f"The new result will be saved as: {Path(filename).stem}_retry_X.json",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             
             if reply == QMessageBox.StandardButton.Yes:
-                self.show_not_implemented_dialog(
-                    "Single File Retry",
-                    f"This would reprocess the file '{filename}' with current settings and generate a new result. The original result would be preserved for comparison."
-                )
+                self._retry_single_file(Path(original_pdf_path), filename)
                 
         except Exception as e:
             self.logger.error(f"Failed to retry processing: {e}")
             QMessageBox.critical(self, "Error", f"Failed to retry processing:\n{str(e)}")
+    
+    def _retry_single_file(self, pdf_path: Path, original_filename: str):
+        """Retry processing a single file in the background."""
+        try:
+            # Ensure engine is present
+            if not self.engine:
+                # Create new engine if not available
+                from ..core import InvoiceReconciliationEngine
+                self.engine = InvoiceReconciliationEngine(self.output_dir)
+            
+            # Update UI to show retry in progress
+            self.statusBar().showMessage(f"Retrying processing for {original_filename}...")
+            
+            # Log message will be handled by the permanent log capture, no need to add manually
+            self.logger.info(f"Starting retry for {original_filename}")
+            
+            # Create a background thread for retry processing using the imported RetryThread
+            # Start retry thread
+            self.retry_thread = RetryThread(self.engine, pdf_path)
+            self.retry_thread.completed.connect(self._on_retry_completed)
+            self.retry_thread.error_occurred.connect(self._on_retry_error)
+            self.retry_thread.start()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to start retry processing: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to start retry processing:\n{str(e)}")
+            self.statusBar().showMessage("Ready")
+    
+    def _on_retry_completed(self, result_dict: dict):
+        """Handle completion of retry processing."""
+        try:
+            filename = Path(result_dict.get('pdf_path', 'Unknown')).name
+            status = self.get_result_status(result_dict)
+            
+            # Update status and show success message
+            self.statusBar().showMessage("Ready")
+            
+            # Log message will be handled by the permanent log capture, no need to add manually
+            self.logger.info(f"Retry completed for {filename}: {status}")
+            
+            # Show success dialog
+            retry_result_file = result_dict.get('result_json_path', 'Unknown')
+            QMessageBox.information(
+                self,
+                "Retry Complete",
+                f"Retry processing completed for {filename}\n\n"
+                f"Status: {status}\n"
+                f"Result saved to: {Path(retry_result_file).name if retry_result_file != 'Unknown' else 'Unknown'}"
+            )
+            
+            # Cleanup
+            if self.engine:
+                self.engine.cleanup()
+            
+        except Exception as e:
+            self.logger.error(f"Error handling retry completion: {e}")
+            self.statusBar().showMessage("Ready")
+    
+    def _on_retry_error(self, error_message: str):
+        """Handle error in retry processing."""
+        try:
+            self.logger.error(f"Retry processing failed: {error_message}")
+            self.statusBar().showMessage("Ready")
+            
+            # Log message will be handled by the permanent log capture, no need to add manually
+            
+            QMessageBox.critical(
+                self,
+                "Retry Failed",
+                f"Failed to retry processing:\n\n{error_message}"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error handling retry error: {e}")
+            self.statusBar().showMessage("Ready")
     
     def on_result_double_clicked(self, index):
         """Handle double-click on result table."""
@@ -1500,6 +1563,7 @@ class MainWindow(QMainWindow):
             
             # Clear current table
             self.result_table.setRowCount(0)
+            self.result_data.clear()  # Also clear the stored result data
             
             # Get results from engine
             results = self.engine.get_workflow_results()
@@ -1508,9 +1572,10 @@ class MainWindow(QMainWindow):
             for result in results:
                 self.add_result_to_table(result.model_dump() if hasattr(result, 'model_dump') else result)
             
+            # Resize table to fit new content
+            self._resize_table_to_fit_content()
+            
             self.logger.info("Results table refreshed")
-            if self.log_viewer:
-                self.log_viewer.add_log_message("INFO", "Results table refreshed")
                 
         except Exception as e:
             self.logger.error(f"Error refreshing results: {e}")

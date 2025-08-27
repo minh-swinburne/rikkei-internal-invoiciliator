@@ -97,8 +97,8 @@ class ConfigDialog(QDialog):
         pdf_layout.addRow(self.enable_stamping_cb)
         
         # Always accept
-        self.always_accept_cb = QCheckBox("Always Accept (Auto-approve all)")
-        self.always_accept_cb.setToolTip("Automatically approve all invoices without validation (use with caution)")
+        self.always_accept_cb = QCheckBox("Always Accept (Stamp)")
+        self.always_accept_cb.setToolTip("Automatically stamp all invoices as Accepted (use with caution)")
         pdf_layout.addRow(self.always_accept_cb)
         
         # PIC Name

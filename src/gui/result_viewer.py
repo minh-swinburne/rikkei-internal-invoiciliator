@@ -356,15 +356,14 @@ class ResultDetailViewer(QDialog):
         issues_layout = QVBoxLayout(self.validation_issues_group)
         
         self.validation_issues_table = QTableWidget()
-        self.validation_issues_table.setColumnCount(2)
-        self.validation_issues_table.setHorizontalHeaderLabels(["#", "Issue Description"])
+        self.validation_issues_table.setColumnCount(1)
+        self.validation_issues_table.setHorizontalHeaderLabels(["Issue Description"])
         self.validation_issues_table.setMaximumHeight(200)  # Limit height
         self.validation_issues_table.setAlternatingRowColors(True)
         
         # Configure column widths
         issues_header = self.validation_issues_table.horizontalHeader()
-        issues_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        issues_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        issues_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         
         issues_layout.addWidget(self.validation_issues_table)
         layout.addWidget(self.validation_issues_group)
@@ -374,15 +373,14 @@ class ResultDetailViewer(QDialog):
         notes_layout = QVBoxLayout(self.validation_notes_group)
         
         self.validation_notes_table = QTableWidget()
-        self.validation_notes_table.setColumnCount(2)
-        self.validation_notes_table.setHorizontalHeaderLabels(["#", "Note"])
+        self.validation_notes_table.setColumnCount(1)
+        self.validation_notes_table.setHorizontalHeaderLabels(["Note"])
         self.validation_notes_table.setMaximumHeight(150)  # Limit height
         self.validation_notes_table.setAlternatingRowColors(True)
         
         # Configure column widths
         notes_header = self.validation_notes_table.horizontalHeader()
-        notes_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        notes_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        notes_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         
         notes_layout.addWidget(self.validation_notes_table)
         layout.addWidget(self.validation_notes_group)
@@ -886,9 +884,6 @@ class ResultDetailViewer(QDialog):
             self.validation_issues_table.setRowCount(len(issues))
             
             for row, issue in enumerate(issues):
-                # Issue number
-                self.validation_issues_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
-                
                 # Issue description with color coding
                 issue_item = QTableWidgetItem(str(issue))
                 
@@ -898,26 +893,22 @@ class ResultDetailViewer(QDialog):
                 elif any(keyword in issue.lower() for keyword in ['warning', 'partial', 'difference']):
                     issue_item.setBackground(QColor(255, 248, 220))  # Light yellow for warnings
                 
-                self.validation_issues_table.setItem(row, 1, issue_item)
+                self.validation_issues_table.setItem(row, 0, issue_item)
             
             # If no issues, show a positive message
             if not issues:
                 self.validation_issues_table.setRowCount(1)
-                self.validation_issues_table.setItem(0, 0, QTableWidgetItem("✓"))
                 success_item = QTableWidgetItem("No validation issues found")
                 success_item.setBackground(QColor(235, 255, 235))  # Light green
-                self.validation_issues_table.setItem(0, 1, success_item)
+                self.validation_issues_table.setItem(0, 0, success_item)
             
             # Populate notes table
             notes = validation_data.get('notes', [])
             self.validation_notes_table.setRowCount(len(notes))
             
             for row, note in enumerate(notes):
-                # Note number
-                self.validation_notes_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
-                
                 # Note description
-                self.validation_notes_table.setItem(row, 1, QTableWidgetItem(str(note)))
+                self.validation_notes_table.setItem(row, 0, QTableWidgetItem(str(note)))
             
             # If no notes, show a placeholder
             if not notes:

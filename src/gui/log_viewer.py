@@ -395,8 +395,8 @@ class LogViewer(QGroupBox):
             filename, _ = QFileDialog.getSaveFileName(
                 self,
                 "Export Logs",
-                f"logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                "Text Files (*.txt);;All Files (*)"
+                f"logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
+                "Log Files (*.log);;All Files (*)"
             )
             
             if filename:

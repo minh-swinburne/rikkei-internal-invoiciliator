@@ -107,19 +107,23 @@ class LLMExtractor:
                                         "properties": {
                                             "sku": {
                                                 "type": ["string", "null"],
-                                                "description": "Stock Keeping Unit (SKU). If not found, try finding item number and consider it as SKU. Sometimes it may be mixed into the description."
+                                                "description": "Stock Keeping Unit (SKU), an alphanumeric string, often a six-character long, e.g. \"Q96284\" or \"6YV960\". It usually stands alone in a separate line in front of the item description. If not found, try finding item number and consider it as SKU. Sometimes it may be mixed into the description, so make sure to extract only the SKU part."
                                             },
                                             "vpn": {
                                                 "type": ["string", "null"],
-                                                "description": "Vendor Part Number (VPN). Sometimes it may be mixed into the description."
+                                                "description": "Vendor Part Number (VPN), an alphanumeric string with possible hyphens, e.g. \"D2CIM-DVUSB\". Sometimes it may be mixed into the description, so make sure to extract only the VPN part (no line-break)."
                                             },
                                             "is_fee": {
                                                 "type": "boolean",
                                                 "description": "Indicates if the item is a fee (e.g., shipping fee), false if it is a product."
                                             },
+                                            "name": {
+                                                "type": "string",
+                                                "description": "Clean product/item name extracted from the description, without shipping info, addresses, contact details, or other metadata. Should be the core product name only, e.g. 'FOXIT PDF EDITOR' instead of the full description with shipping details."
+                                            },
                                             "description": {
                                                 "type": "string",
-                                                "description": "Item description."
+                                                "description": "Complete item description exactly as it appears in the document, including all details, shipping info, addresses, contact details, etc."
                                             },
                                             "unit_price": {
                                                 "type": "number",
@@ -138,7 +142,7 @@ class LLMExtractor:
                                                 "description": "Total price for the item"
                                             }
                                         },
-                                        "required": ["description", "unit_price", "quantity_ordered", "total"],
+                                        "required": ["name", "description", "unit_price", "quantity_ordered", "total"],
                                         "additionalProperties": False
                                     }
                                 },
@@ -162,19 +166,23 @@ class LLMExtractor:
                                         "properties": {
                                             "sku": {
                                                 "type": ["string", "null"],
-                                                "description": "Stock Keeping Unit (SKU). If not found, try finding item number and consider it as SKU. Sometimes it may be mixed into the description."
+                                                "description": "Stock Keeping Unit (SKU), an alphanumeric string, often a six-character long, e.g. \"Q96284\" or \"6YV960\". It usually stands alone in a separate line in front of the item description. If not found, try finding item number and consider it as SKU. Sometimes it may be mixed into the description, so make sure to extract only the SKU part."
                                             },
                                             "vpn": {
                                                 "type": ["string", "null"],
-                                                "description": "Vendor Part Number (VPN). Sometimes it may be mixed into the description."
+                                                "description": "Vendor Part Number (VPN), an alphanumeric string with possible hyphens, e.g. \"D2CIM-DVUSB\". Sometimes it may be mixed into the description, so make sure to extract only the VPN part (no line-break)."
                                             },
                                             "is_fee": {
                                                 "type": "boolean",
                                                 "description": "Indicates if the item is a fee (e.g., shipping fee), false if it is a product."
                                             },
+                                            "name": {
+                                                "type": "string",
+                                                "description": "Clean product/item name extracted from the description, without shipping info, addresses, contact details, or other metadata. Should be the core product name only."
+                                            },
                                             "description": {
                                                 "type": "string",
-                                                "description": "Description of the item."
+                                                "description": "Complete item description exactly as it appears in the document, including all details."
                                             },
                                             "unit_price": {
                                                 "type": "number",
@@ -189,7 +197,7 @@ class LLMExtractor:
                                                 "description": "Total price of the item."
                                             }
                                         },
-                                        "required": ["description", "unit_price", "quantity_ordered", "total"],
+                                        "required": ["name", "description", "unit_price", "quantity_ordered", "total"],
                                         "additionalProperties": False
                                     }
                                 },
@@ -223,7 +231,7 @@ class LLMExtractor:
             )
             content = response.choices[0].message.content
             self.logger.debug(f"Structured output response length: {len(content)} characters")
-            self.logger.debug(f"Raw structured response: {content[:500]}{'...' if len(content) > 500 else ''}")
+            self.logger.debug(f"Raw structured response: {content[:100]}{'...' if len(content) > 100 else ''}")
 
             result = json.loads(content)
             self.logger.info("✅ Used structured output successfully")
@@ -237,9 +245,9 @@ class LLMExtractor:
             self.logger.debug("Falling back to plain text mode...")
             
             fallback_prompt = system_prompt + "\n\n" + \
-                "You MUST return a JSON object following this exact schema (with NO code block wrappers):\n" + \
+                "You MUST return a JSON object following this JSON Schema definition:\n" + \
                 json.dumps(response_format["json_schema"]["schema"], indent=2) + "\n\n" + \
-                "Return ONLY the JSON object, no additional text or formatting."
+                "IMPORTANT NOTE: Return ONLY plain text of the JSON object, NO additional text or formatting."
             
             try:
                 response = self.client.chat.completions.create(
@@ -249,16 +257,16 @@ class LLMExtractor:
                         {"role": "user", "content": text}
                     ],
                     temperature=0.0,
-                    max_tokens=4000
+                    max_tokens=4096
                 )
                 
                 content = response.choices[0].message.content
                 self.logger.debug(f"Fallback response length: {len(content)} characters")
-                self.logger.debug(f"Raw fallback response: {content[:500]}..." if len(content) > 500 else f"Raw fallback response: {content}")
+                self.logger.debug(f"Raw fallback response: {content[:100]}..." if len(content) > 100 else f"Raw fallback response: {content}")
                 
                 # Remove Markdown code block wrappers if present
                 cleaned_content = self._clean_json_response(content)
-                self.logger.debug(f"Cleaned response: {cleaned_content[:500]}{'...' if len(cleaned_content) > 500 else ''}")
+                self.logger.debug(f"Cleaned response: {cleaned_content[:100]}{'...' if len(cleaned_content) > 100 else ''}")
                 
                 result = json.loads(cleaned_content)
                 self.logger.info("✅ Used fallback plain text mode successfully")

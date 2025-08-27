@@ -42,13 +42,14 @@ class FileManager:
         
         self.logger.info(f"FileManager initialized with output directory: {self.output_dir}")
     
-    def process_pdf(self, pdf_path: str | Path, status: str) -> Path:
+    def process_pdf(self, pdf_path: str | Path, file_status: str, stamp_status: str = None) -> Path:
         """
         Process PDF: either stamp and save, or just copy to appropriate directory.
         
         Args:
             pdf_path: Path to the original PDF file
-            status: Processing status ("APPROVED" or "REQUIRES REVIEW")
+            file_status: Processing status for file placement ("APPROVED" or "REQUIRES REVIEW")
+            stamp_status: Status to show on stamp (defaults to file_status if not provided)
             
         Returns:
             Path to the processed file in the output directory
@@ -56,26 +57,32 @@ class FileManager:
         if isinstance(pdf_path, str):
             pdf_path = Path(pdf_path)
         
+        # Use file_status for stamp if stamp_status not provided
+        if stamp_status is None:
+            stamp_status = file_status
+        
         if settings.enable_stamping:
-            return self._stamp_and_save_pdf(pdf_path, status)
+            return self._stamp_and_save_pdf(pdf_path, file_status, stamp_status)
         else:
-            return self._copy_pdf_to_directory(pdf_path, status)
+            return self._copy_pdf_to_directory(pdf_path, file_status)
     
-    def _stamp_and_save_pdf(self, pdf_path: Path, status: str) -> Path:
+    def _stamp_and_save_pdf(self, pdf_path: Path, file_status: str, stamp_status: str) -> Path:
         """
         Stamp PDF with approval status and save to appropriate directory.
         
         Args:
             pdf_path: Path to the original PDF file
-            status: Status to stamp ("APPROVED" or "REQUIRES REVIEW")
+            file_status: Status for determining target directory ("APPROVED" or "REQUIRES REVIEW")
+            stamp_status: Status to display on the stamp ("APPROVED" or "REQUIRES REVIEW")
             
         Returns:
             Path to the stamped file in the output directory
         """
-        target_dir = self.approved_dir if status == "APPROVED" else self.review_dir
+        # File location based on actual validation result
+        target_dir = self.approved_dir if file_status == "APPROVED" else self.review_dir
         target_path = target_dir / pdf_path.name
         
-        self.logger.info(f"Stamping PDF: {pdf_path.name} with status: {status}")
+        self.logger.info(f"Stamping PDF: {pdf_path.name} with stamp '{stamp_status}' -> {target_dir.name}/")
         
         try:
             # Open the PDF
@@ -86,8 +93,8 @@ class FileManager:
             rect = page.rect
             pic_name = settings.stamp_pic_name
             
-            # Calculate responsive dimensions based on content
-            status_width = len(status) * 8.5  # Approximate width for status text (14px font)
+            # Calculate responsive dimensions based on content (using stamp_status for sizing)
+            status_width = len(stamp_status) * 8.5  # Approximate width for status text (14px font)
             person_width = len(f"By {pic_name}") * 7  # Approximate width for person line (12px font)
             time_text = f"at {datetime.now().strftime('%I:%M %p, %b %d, %Y')}"
             time_width = len(time_text) * 7  # Approximate width for time line (12px font)
@@ -137,8 +144,8 @@ class FileManager:
                 y1 - padding_y
             )
 
-            # Set stamp color based on status
-            color = "#416a1c" if status == "APPROVED" else "#dc3545"  # Green for approved, red for review
+            # Set stamp color based on stamp status
+            color = "#416a1c" if stamp_status == "APPROVED" else "#dc3545"  # Green for approved, red for review
             color_rgb = tuple(num / 255 for num in hex_to_rgb(color))
             
             # Draw the rounded rectangle background
@@ -153,14 +160,14 @@ class FileManager:
             
             # Create HTML content with improved styling
             now = datetime.now()
-            icon = "✓" if status == "APPROVED" else "⚠"
+            icon = "✓" if stamp_status == "APPROVED" else "⚠"
             formatted_time = now.strftime("%I:%M %p, %b %d, %Y").replace(" 0", " ")  # Remove leading zero
             
             html_content = f"""
             <div class="stamp">
                 <div class="stamp-header">
                     <span class="stamp-icon">{icon}</span>
-                    <span class="stamp-status">{status}</span>
+                    <span class="stamp-status">{stamp_status}</span>
                 </div>
                 <div class="stamp-footer">
                     <div class="person-line">By {pic_name}</div>
@@ -243,7 +250,7 @@ class FileManager:
         except Exception as e:
             self.logger.error(f"Failed to stamp PDF {pdf_path.name}: {str(e)}")
             # Fallback: copy without stamping
-            return self._copy_pdf_to_directory(pdf_path, status)
+            return self._copy_pdf_to_directory(pdf_path, file_status)
     
     def _copy_pdf_to_directory(self, pdf_path: Path, status: str) -> Path:
         """
@@ -265,11 +272,19 @@ class FileManager:
 
     def save_result(
         self, 
-        processing_result: 'ProcessingResult'
+        processing_result: 'ProcessingResult',
+        is_retry: bool = False
     ) -> Path:
         """Save the complete processing result to a file."""
         pdf_path = processing_result.pdf_path
-        output_path = self.output_dir / "result" / f"{pdf_path.stem}.json"
+        
+        if is_retry:
+            # Find the next available retry index
+            retry_index = self._get_next_retry_index(pdf_path)
+            output_path = self.output_dir / "result" / f"{pdf_path.stem}_retry_{retry_index}.json"
+        else:
+            output_path = self.output_dir / "result" / f"{pdf_path.stem}.json"
+            
         output_path.parent.mkdir(parents=True, exist_ok=True)
         processing_result.result_json_path = output_path
 
@@ -280,3 +295,15 @@ class FileManager:
             
         self.logger.info(f"Processing result saved to: {output_path}")
         return output_path
+    
+    def _get_next_retry_index(self, pdf_path: Path) -> int:
+        """Get the next available retry index for a given PDF file."""
+        result_dir = self.output_dir / "result"
+        base_name = pdf_path.stem
+        
+        retry_index = 1
+        while True:
+            retry_path = result_dir / f"{base_name}_retry_{retry_index}.json"
+            if not retry_path.exists():
+                return retry_index
+            retry_index += 1

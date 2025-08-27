@@ -8,7 +8,7 @@ from pathlib import Path
 # Add src to path so we can import the modules
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from src.file_manager import FileManager
+from src.core.services.file_manager import FileManager
 import pymupdf
 
 

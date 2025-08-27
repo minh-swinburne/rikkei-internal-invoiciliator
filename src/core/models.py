@@ -6,7 +6,8 @@ class Item(BaseModel):
     sku: Optional[str] = None
     vpn: Optional[str] = None
     is_fee: bool = Field(default=False, description="Indicates if the item is a fee (e.g., shipping fee), false if it is a product.")
-    description: str
+    name: str = Field(description="Clean product/item name without extra details")
+    description: str = Field(description="Full item description including all details from the document")
     unit_price: float = Field(ge=0.0, description="Unit price must be non-negative")
     quantity_ordered: int = Field(ge=0, description="Ordered quantity must be non-negative")
     quantity_shipped: Optional[int] = Field(None, ge=0, description="Shipped quantity (optional for POs)")
@@ -19,7 +20,7 @@ class Item(BaseModel):
         elif self.vpn:
             return f"vpn:{self.vpn}"
         else:
-            return f"desc:{self.description.lower().strip()}"
+            return f"name:{self.name.lower().strip()}"
 
 class PurchaseOrder(BaseModel):
     """Purchase Order model"""

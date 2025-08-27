@@ -49,6 +49,10 @@ class InvoiceReconciliationEngine:
         self.service_manager.initialize(self.output_dir)
         self.logger.info("Engine initialized successfully")
     
+    def is_initialized(self) -> bool:
+        """Check if the engine is initialized."""
+        return self.service_manager.is_initialized()
+
     def cleanup(self) -> None:
         """Clean up engine resources."""
         self.logger.info("Cleaning up engine...")
@@ -113,12 +117,13 @@ class InvoiceReconciliationEngine:
         
         return self.current_workflow
     
-    def process_single_file(self, pdf_path: Path) -> ProcessingResult:
+    def process_single_file(self, pdf_path: Path, is_retry: bool = False) -> ProcessingResult:
         """
         Process a single PDF file.
         
         Args:
             pdf_path: Path to the PDF file
+            is_retry: Whether this is a retry attempt
             
         Returns:
             ProcessingResult with processing outcome
@@ -126,7 +131,8 @@ class InvoiceReconciliationEngine:
         result = ProcessingResult(pdf_path=pdf_path, status=ProcessingStatus.PROCESSING)
         
         try:
-            self.logger.info(f"Processing PDF: {pdf_path.name}")
+            log_prefix = "Retrying" if is_retry else "Processing"
+            self.logger.info(f"{log_prefix} PDF: {pdf_path.name}")
             self._emit_file_started(result)
             
             # Get services
@@ -161,10 +167,6 @@ class InvoiceReconciliationEngine:
             # Determine processing status
             approval_status = "APPROVED" if validation_result.is_approved else "REQUIRES REVIEW"
             
-            # Override status if configured to always accept
-            if settings.stamp_always_accept:
-                approval_status = "APPROVED"
-            
             result.approval_status = approval_status
             self.logger.info(f"Validation result: {approval_status}")
             
@@ -175,21 +177,31 @@ class InvoiceReconciliationEngine:
             
             # Step 4: Process and save the PDF
             self._update_status(result, ProcessingStatus.SAVING, "Processing and saving PDF...")
-            final_path = file_manager.process_pdf(pdf_path, approval_status)
+            
+            # Determine stamp text vs file location
+            # - File location is always based on actual validation result
+            # - Stamp text can be overridden by always_accept setting
+            stamp_status = "APPROVED" if settings.stamp_always_accept else approval_status
+            
+            final_path = file_manager.process_pdf(pdf_path, approval_status, stamp_status)
             result.processed_pdf_path = final_path
             
             # Step 5: Save the complete processing result
             result.mark_completed(success=True)
-            result_path = file_manager.save_result(result)
             
-            self.logger.info(f"Successfully processed PDF: {final_path}")
+            log_suffix = "retry" if is_retry else "original"
+            self.logger.info(f"Successfully processed PDF {log_suffix}: {final_path}")
             
         except Exception as e:
+            import traceback
             error_msg = f"Error processing PDF {pdf_path.name}: {str(e)}"
+            result.mark_failed(error_msg, traceback.format_exc())
             self.logger.error(error_msg, exc_info=True)
-            result.mark_failed(error_msg, str(e))
         
-        self._emit_file_completed(result)
+        finally:
+            result_path = file_manager.save_result(result, is_retry=is_retry)
+            self._emit_file_completed(result)
+
         return result
     
     def process_workflow(self) -> None:
