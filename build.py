@@ -322,8 +322,7 @@ SYSTEM REQUIREMENTS:
 
 SUPPORT:
 - User Guide: USER_GUIDE.md
-- GitHub: https://github.com/minh-swinburne/rikkei-internal-invoiciliator
-- Issues: Create an issue on GitHub
+- Issues: Contact me to report issues and give feedback
 
 WHAT'S INCLUDED:
 - InvoiceReconciliator.exe - Main application
