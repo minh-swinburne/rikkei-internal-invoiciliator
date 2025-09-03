@@ -55,6 +55,10 @@ class ConfigDialog(QDialog):
         file_tab = self.create_file_management_tab()
         tab_widget.addTab(file_tab, "File Management")
         
+        # Network Configuration tab
+        network_tab = self.create_network_tab()
+        tab_widget.addTab(network_tab, "Network")
+        
         # Button layout
         button_layout = QHBoxLayout()
         
@@ -270,8 +274,219 @@ class ConfigDialog(QDialog):
         
         return tab
     
+    def create_network_tab(self) -> QWidget:
+        """Create the network configuration tab for corporate environments."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # SSL Configuration Group
+        ssl_group = QGroupBox("SSL Configuration (Corporate Networks)")
+        ssl_layout = QFormLayout(ssl_group)
+        
+        # SSL Verification checkbox
+        self.ssl_verify_cb = QCheckBox("Enable SSL Certificate Verification")
+        self.ssl_verify_cb.setChecked(True)  # Default to secure
+        self.ssl_verify_cb.setToolTip("Uncheck this if you get SSL certificate errors in corporate networks")
+        self.ssl_verify_cb.stateChanged.connect(self._on_ssl_verify_changed)
+        ssl_layout.addRow("SSL Verification:", self.ssl_verify_cb)
+        
+        # SSL Warning label
+        self.ssl_warning_label = QLabel()
+        self.ssl_warning_label.setStyleSheet("color: orange; font-weight: bold; padding: 5px;")
+        self.ssl_warning_label.setWordWrap(True)
+        self.ssl_warning_label.hide()
+        ssl_layout.addRow("", self.ssl_warning_label)
+        
+        # Use certifi checkbox
+        self.use_certifi_cb = QCheckBox("Use certifi certificate bundle")
+        self.use_certifi_cb.setChecked(True)  # Default enabled
+        self.use_certifi_cb.setToolTip("Use up-to-date CA certificates from certifi package")
+        ssl_layout.addRow("Certificate Bundle:", self.use_certifi_cb)
+        
+        # Disable SSL warnings checkbox
+        self.disable_ssl_warnings_cb = QCheckBox("Disable SSL warnings")
+        self.disable_ssl_warnings_cb.setEnabled(False)  # Only enabled when SSL is disabled
+        self.disable_ssl_warnings_cb.setToolTip("Suppress SSL warning messages in logs")
+        ssl_layout.addRow("SSL Warnings:", self.disable_ssl_warnings_cb)
+        
+        # Custom CA certificate file
+        ca_layout = QHBoxLayout()
+        self.ssl_cert_file_edit = QLineEdit()
+        self.ssl_cert_file_edit.setPlaceholderText("Path to custom SSL certificate file (optional)")
+        self.ssl_cert_file_edit.setToolTip("Custom SSL certificate file for corporate environments")
+        ca_browse_btn = QPushButton("Browse...")
+        ca_browse_btn.clicked.connect(self._browse_ssl_cert_file)
+        ca_layout.addWidget(self.ssl_cert_file_edit)
+        ca_layout.addWidget(ca_browse_btn)
+        ssl_layout.addRow("Custom Certificate:", ca_layout)
+        
+        layout.addWidget(ssl_group)
+        
+        # Proxy Configuration Group
+        proxy_group = QGroupBox("Proxy Settings (Corporate Networks)")
+        proxy_layout = QFormLayout(proxy_group)
+        
+        # HTTP Proxy
+        self.http_proxy_edit = QLineEdit()
+        self.http_proxy_edit.setPlaceholderText("http://proxy.company.com:8080")
+        self.http_proxy_edit.setToolTip("HTTP proxy server for corporate networks")
+        proxy_layout.addRow("HTTP Proxy:", self.http_proxy_edit)
+        
+        # HTTPS Proxy
+        self.https_proxy_edit = QLineEdit()
+        self.https_proxy_edit.setPlaceholderText("https://proxy.company.com:8080")
+        self.https_proxy_edit.setToolTip("HTTPS proxy server for corporate networks")
+        proxy_layout.addRow("HTTPS Proxy:", self.https_proxy_edit)
+        
+        layout.addWidget(proxy_group)
+        
+        # Test Connection Button
+        test_connection_btn = QPushButton("Test Network Connection")
+        test_connection_btn.setToolTip("Test API connection with current network settings")
+        test_connection_btn.clicked.connect(self._test_network_connection)
+        layout.addWidget(test_connection_btn)
+        
+        # Help Information
+        help_label = QLabel(
+            "<b>ℹ️ Corporate Network Help:</b><br>"
+            "• <b>SSL Certificate Errors:</b> Uncheck 'Enable SSL Certificate Verification'<br>"
+            "• <b>Connection Issues:</b> Configure proxy settings above<br>"
+            "• <b>Contact IT:</b> Ask for proper SSL certificates or network access<br>"
+            "• <b>Test Connection:</b> Use the button above to verify settings work"
+        )
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet("color: #666; font-size: 11px; margin: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 5px;")
+        layout.addWidget(help_label)
+        
+        layout.addStretch()
+        
+        return tab
+    
+    def _on_ssl_verify_changed(self, state: int) -> None:
+        """Handle SSL verification checkbox changes."""
+        ssl_enabled = state == Qt.CheckState.Checked.value
+        
+        if not ssl_enabled:
+            self.ssl_warning_label.setText("⚠️ SSL verification is DISABLED - Use only in corporate environments!")
+            self.ssl_warning_label.show()
+            self.disable_ssl_warnings_cb.setEnabled(True)
+            self.disable_ssl_warnings_cb.setChecked(True)
+        else:
+            self.ssl_warning_label.hide()
+            self.disable_ssl_warnings_cb.setEnabled(False)
+            self.disable_ssl_warnings_cb.setChecked(False)
+    
+    def _browse_ssl_cert_file(self) -> None:
+        """Browse for SSL certificate file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select SSL Certificate File",
+            "",
+            "Certificate files (*.pem *.crt *.cert *.ca-bundle);;All files (*.*)"
+        )
+        
+        if file_path:
+            self.ssl_cert_file_edit.setText(file_path)
+    
+    def _test_network_connection(self) -> None:
+        """Test network connection with current settings."""
+        # Apply current settings temporarily
+        self._apply_network_settings_temporarily()
+        
+        # Show progress dialog
+        progress = QMessageBox(self)
+        progress.setWindowTitle("Testing Network Connection")
+        progress.setText("Testing API connection with current network settings...")
+        progress.setStandardButtons(QMessageBox.StandardButton.NoButton)
+        progress.show()
+        
+        try:
+            # Test the LLM connection
+            from ..core.services.llm_extractor import LLMExtractor
+            
+            # This will use the current settings including SSL configuration
+            extractor = LLMExtractor()
+            
+            # Test a simple API call
+            success = extractor.test_structured_output_support()
+            
+            progress.accept()
+            
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Network Test Successful",
+                    "✅ Network connection test passed!\n\n"
+                    "The application can successfully connect to the AI service "
+                    "with your current network settings."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Network Test Completed with Issues",
+                    "⚠️ Network connection was established but with some limitations.\n\n"
+                    "The application may work but some features might be limited.\n"
+                    "Check the log viewer for more details."
+                )
+        
+        except Exception as e:
+            progress.accept()
+            
+            error_msg = str(e)
+            if "ssl" in error_msg.lower() or "certificate" in error_msg.lower():
+                QMessageBox.critical(
+                    self,
+                    "SSL Certificate Error",
+                    "🔒 SSL Certificate verification failed!\n\n"
+                    "This is common in corporate networks with SSL interception.\n\n"
+                    "💡 Solution: Uncheck 'Enable SSL Certificate Verification' "
+                    "and test again.\n\n"
+                    f"Technical details: {error_msg[:200]}..."
+                )
+            elif "connection" in error_msg.lower():
+                QMessageBox.critical(
+                    self,
+                    "Network Connection Error",
+                    "🌐 Network connection failed!\n\n"
+                    "This may be due to firewall or proxy restrictions.\n\n"
+                    "💡 Solutions:\n"
+                    "• Configure proxy settings if required\n"
+                    "• Check firewall allows HTTPS connections\n"
+                    "• Try from a different network\n\n"
+                    f"Technical details: {error_msg[:200]}..."
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Network Test Failed",
+                    f"❌ Network connection test failed:\n\n{error_msg[:300]}...\n\n"
+                    "Check your network settings and API key, then try again."
+                )
+    
+    def _apply_network_settings_temporarily(self) -> None:
+        """Temporarily apply network settings for testing."""
+        # Store current settings
+        import os
+        
+        # Apply SSL settings
+        os.environ['SSL_VERIFY'] = 'true' if self.ssl_verify_cb.isChecked() else 'false'
+        os.environ['USE_CERTIFI'] = 'true' if self.use_certifi_cb.isChecked() else 'false'
+        os.environ['DISABLE_SSL_WARNINGS'] = 'true' if self.disable_ssl_warnings_cb.isChecked() else 'false'
+        
+        if self.ssl_cert_file_edit.text().strip():
+            os.environ['SSL_CERT_FILE'] = self.ssl_cert_file_edit.text().strip()
+        
+        # Apply proxy settings
+        if self.http_proxy_edit.text().strip():
+            os.environ['HTTP_PROXY'] = self.http_proxy_edit.text().strip()
+        
+        if self.https_proxy_edit.text().strip():
+            os.environ['HTTPS_PROXY'] = self.https_proxy_edit.text().strip()
+    
     def load_current_settings(self):
         """Load current settings into the dialog."""
+        import os
+        
         # Store original settings
         self.original_settings = {
             'input_dir': settings.input_dir,
@@ -312,10 +527,31 @@ class ConfigDialog(QDialog):
         self.save_to_env_cb.setChecked(True)  # Default to enabled
         self.create_backup_cb.setChecked(False)  # Feature not implemented yet
         self.auto_organize_cb.setChecked(False)  # Feature not implemented yet
+        
+        # Network tab - Load from settings object first, then environment variables as fallback
+        ssl_verify = getattr(settings, 'ssl_verify', True)
+        self.ssl_verify_cb.setChecked(ssl_verify)
+        
+        use_certifi = getattr(settings, 'use_certifi', True)
+        self.use_certifi_cb.setChecked(use_certifi)
+        
+        disable_ssl_warnings = getattr(settings, 'disable_ssl_warnings', False)
+        self.disable_ssl_warnings_cb.setChecked(disable_ssl_warnings)
+        
+        ssl_cert_file = getattr(settings, 'ssl_cert_file', '') or ''
+        self.ssl_cert_file_edit.setText(ssl_cert_file)
+        
+        http_proxy = getattr(settings, 'http_proxy', '') or ''
+        self.http_proxy_edit.setText(http_proxy)
+        
+        https_proxy = getattr(settings, 'https_proxy', '') or ''
+        self.https_proxy_edit.setText(https_proxy)
     
     def save_settings(self):
         """Save the current settings."""
         try:
+            import os
+            
             # Update settings object
             settings.enable_stamping = self.enable_stamping_cb.isChecked()
             settings.stamp_always_accept = self.always_accept_cb.isChecked()
@@ -332,6 +568,37 @@ class ConfigDialog(QDialog):
             settings.llm_base_url = self.base_url_edit.text().strip()
             settings.llm_max_retries = self.max_retries_spin.value()
             settings.llm_timeout_sec = self.timeout_spin.value()
+            
+            # Network settings - Update both settings object and environment
+            settings.ssl_verify = self.ssl_verify_cb.isChecked()
+            settings.use_certifi = self.use_certifi_cb.isChecked()
+            settings.disable_ssl_warnings = self.disable_ssl_warnings_cb.isChecked()
+            settings.ssl_cert_file = self.ssl_cert_file_edit.text().strip() or None
+            settings.http_proxy = self.http_proxy_edit.text().strip() or None
+            settings.https_proxy = self.https_proxy_edit.text().strip() or None
+            
+            # Also apply to environment for immediate effect
+            os.environ['SSL_VERIFY'] = 'true' if self.ssl_verify_cb.isChecked() else 'false'
+            os.environ['USE_CERTIFI'] = 'true' if self.use_certifi_cb.isChecked() else 'false'
+            os.environ['DISABLE_SSL_WARNINGS'] = 'true' if self.disable_ssl_warnings_cb.isChecked() else 'false'
+            
+            ssl_cert_file = self.ssl_cert_file_edit.text().strip()
+            if ssl_cert_file:
+                os.environ['SSL_CERT_FILE'] = ssl_cert_file
+            elif 'SSL_CERT_FILE' in os.environ:
+                del os.environ['SSL_CERT_FILE']
+            
+            http_proxy = self.http_proxy_edit.text().strip()
+            if http_proxy:
+                os.environ['HTTP_PROXY'] = http_proxy
+            elif 'HTTP_PROXY' in os.environ:
+                del os.environ['HTTP_PROXY']
+            
+            https_proxy = self.https_proxy_edit.text().strip()
+            if https_proxy:
+                os.environ['HTTPS_PROXY'] = https_proxy
+            elif 'HTTPS_PROXY' in os.environ:
+                del os.environ['HTTPS_PROXY']
             
             # Save to .env file if requested
             if self.save_to_env_cb.isChecked():
@@ -362,15 +629,33 @@ INPUT_DIR={settings.input_dir}
 OUTPUT_DIR={settings.output_dir}
 LOG_LEVEL={settings.log_level}
 MAX_FILE_SIZE_MB={settings.max_file_size_mb}
-CONCURRENT_PROCESSING={settings.concurrent_processing}
+CONCURRENT_PROCESSING={'true' if settings.concurrent_processing else 'false'}
 
 # PDF Stamping Settings
-ENABLE_STAMPING={settings.enable_stamping}
+ENABLE_STAMPING={'true' if settings.enable_stamping else 'false'}
 STAMP_PIC_NAME={settings.stamp_pic_name}
-STAMP_ALWAYS_ACCEPT={settings.stamp_always_accept}
+STAMP_ALWAYS_ACCEPT={'true' if settings.stamp_always_accept else 'false'}
 STAMP_POSITION={settings.stamp_position}
 STAMP_OFFSET={settings.stamp_offset}
+
+# Network Configuration (Corporate Environments)
+SSL_VERIFY={'true' if self.ssl_verify_cb.isChecked() else 'false'}
+USE_CERTIFI={'true' if self.use_certifi_cb.isChecked() else 'false'}
+DISABLE_SSL_WARNINGS={'true' if self.disable_ssl_warnings_cb.isChecked() else 'false'}
 """
+
+        # Add optional network settings only if they have values
+        ssl_cert_file = self.ssl_cert_file_edit.text().strip()
+        if ssl_cert_file:
+            env_content += f"SSL_CERT_FILE={ssl_cert_file}\n"
+        
+        http_proxy = self.http_proxy_edit.text().strip()
+        if http_proxy:
+            env_content += f"HTTP_PROXY={http_proxy}\n"
+        
+        https_proxy = self.https_proxy_edit.text().strip()
+        if https_proxy:
+            env_content += f"HTTPS_PROXY={https_proxy}\n"
         
         try:
             with open(env_path, 'w') as f:
@@ -406,6 +691,14 @@ STAMP_OFFSET={settings.stamp_offset}
             self.base_url_edit.setText("https://openrouter.ai/api/v1")
             self.max_retries_spin.setValue(3)
             self.timeout_spin.setValue(60)
+            
+            # Network defaults (secure by default)
+            self.ssl_verify_cb.setChecked(True)
+            self.use_certifi_cb.setChecked(True)
+            self.disable_ssl_warnings_cb.setChecked(False)
+            self.ssl_cert_file_edit.clear()
+            self.http_proxy_edit.clear()
+            self.https_proxy_edit.clear()
     
     def test_llm_connection(self):
         """Test the LLM connection."""

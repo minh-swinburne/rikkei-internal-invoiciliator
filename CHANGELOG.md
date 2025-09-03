@@ -5,6 +5,38 @@ All notable changes to the Invoice Reconciliator project will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-09-03
+
+### 🌐 Corporate Network Support
+- **Network Configuration Tab**: Added comprehensive GUI settings for corporate environments with SSL and proxy configuration
+- **SSL Certificate Management**: Support for corporate SSL interception with disable verification option and custom certificate bundles
+- **Proxy Configuration**: HTTP/HTTPS proxy support for corporate firewalls with GUI configuration interface
+- **Network Connection Testing**: Built-in test functionality to verify API connectivity with current network settings
+- **Enhanced Error Handling**: Consolidated SSL and network error reporting with specific guidance for corporate users
+
+### 🔧 Configuration Improvements  
+- **Boolean Format Consistency**: Standardized all boolean values in .env files to lowercase format (true/false) for better compatibility
+- **Settings System Enhancement**: Added SSL/network fields to Pydantic settings with automatic environment variable loading
+- **Backup Configuration**: QSettings integration for network settings persistence as backup to .env file
+- **Template Updates**: Updated .env.template with comprehensive network configuration options
+
+### 📚 Documentation & User Experience
+- **Corporate Network Guide**: Added detailed SSL troubleshooting section to USER_GUIDE.md with step-by-step solutions
+- **SSL Quick Fix Documentation**: Created OPENAI_SSL.md with technical SSL resolution examples
+- **Enhanced Help Content**: Updated user guide with network tab instructions and corporate environment guidance
+- **Error Message Improvements**: More descriptive SSL/network error messages with solution suggestions
+
+### 🏗️ Technical Enhancements
+- **HTTP Client Configuration**: Enhanced LLM extractor with proper SSL and proxy support using httpx client
+- **Environment Variable Management**: Automatic SSL environment configuration (SSL_CERT_FILE, REQUESTS_CA_BUNDLE, etc.)
+- **Certificate Bundle Support**: Integration with certifi package for up-to-date CA certificates
+- **SSL Warning Management**: Option to disable SSL warnings in corporate environments
+
+### 🐛 Bug Fixes
+- **Configuration File Consistency**: Fixed mixed boolean case issues in configuration templates
+- **Settings Persistence**: Improved settings synchronization between GUI, environment variables, and config files
+- **SSL Context Issues**: Resolved SSL verification problems in corporate networks with proper fallback handling
+
 ## [1.1.0] - 2025-08-27
 
 ### 🆕 New Features

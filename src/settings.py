@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     stamp_position: str = Field(default="bottom-right", description="Position for PDF stamps")
     stamp_offset: str = Field(default="20,200", description="Horizontal,Vertical offset for stamp position")
     
+    # SSL/Network Configuration for Corporate Environments
+    ssl_verify: bool = Field(default=True, description="Enable SSL certificate verification")
+    ssl_cert_file: Optional[str] = Field(default=None, description="Path to custom SSL certificate file")
+    disable_ssl_warnings: bool = Field(default=False, description="Disable SSL warnings")
+    use_certifi: bool = Field(default=True, description="Use certifi package for SSL certificates")
+    http_proxy: Optional[str] = Field(default=None, description="HTTP proxy URL")
+    https_proxy: Optional[str] = Field(default=None, description="HTTPS proxy URL")
+    
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
@@ -75,7 +83,7 @@ class Settings(BaseSettings):
             # Fallback to current directory
             load_dotenv(".env", override=True)
         
-        # Load from multiple environment variable names
+        # Load from multiple environment variable names for LLM settings only
         if 'llm_api_key' not in kwargs:
             kwargs['llm_api_key'] = (
                 os.getenv('LLM_API_KEY') or 
@@ -97,6 +105,7 @@ class Settings(BaseSettings):
                 "google/gemini-2.0-flash-001"
             )
         
+        # Let Pydantic handle all other environment variables automatically
         super().__init__(**kwargs)
         
         # Note: API key validation is handled by the GUI - don't fail during initialization

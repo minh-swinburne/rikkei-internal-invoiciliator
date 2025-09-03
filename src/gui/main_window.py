@@ -650,11 +650,18 @@ class MainWindow(QMainWindow):
         # Also update global settings with current values
         settings.input_dir = input_dir
         settings.output_dir = output_dir
+        
+        # Load network settings from QSettings as backup (main source is .env file via settings object)
+        self._load_network_settings_from_qsettings()
     
     def reload_config_settings(self):
         """Reload only the settings that might have changed from config dialog."""
         # Only update PIC name from global settings, preserve directories
         self.pic_name_edit.setText(settings.stamp_pic_name)
+        
+        # Save updated network settings to QSettings as backup
+        self._save_network_settings_to_qsettings()
+        self.settings.sync()
     
     def save_settings(self):
         """Save current UI settings."""
@@ -677,10 +684,78 @@ class MainWindow(QMainWindow):
             settings.output_dir = output_dir
             settings.stamp_pic_name = pic_name
             
+            # Save network settings to QSettings as backup
+            self._save_network_settings_to_qsettings()
+            
             self.settings.sync()
             self.logger.debug("Settings saved successfully")
         except Exception as e:
             self.logger.error(f"Failed to save settings: {e}")
+    
+    def _load_network_settings_from_qsettings(self):
+        """Load network settings from QSettings as backup if not already set in settings object."""
+        import os
+        
+        # Only use QSettings values if environment variables are not set
+        # This preserves the priority: .env file > environment variables > QSettings > defaults
+        
+        if not os.getenv('SSL_VERIFY') and hasattr(settings, 'ssl_verify'):
+            saved_ssl_verify = self.settings.value("network/ssl_verify", None)
+            if saved_ssl_verify is not None:
+                settings.ssl_verify = saved_ssl_verify == 'true'
+                os.environ['SSL_VERIFY'] = saved_ssl_verify
+        
+        if not os.getenv('USE_CERTIFI') and hasattr(settings, 'use_certifi'):
+            saved_use_certifi = self.settings.value("network/use_certifi", None)
+            if saved_use_certifi is not None:
+                settings.use_certifi = saved_use_certifi == 'true'
+                os.environ['USE_CERTIFI'] = saved_use_certifi
+        
+        if not os.getenv('DISABLE_SSL_WARNINGS') and hasattr(settings, 'disable_ssl_warnings'):
+            saved_disable_ssl_warnings = self.settings.value("network/disable_ssl_warnings", None)
+            if saved_disable_ssl_warnings is not None:
+                settings.disable_ssl_warnings = saved_disable_ssl_warnings == 'true'
+                os.environ['DISABLE_SSL_WARNINGS'] = saved_disable_ssl_warnings
+        
+        if not os.getenv('SSL_CERT_FILE') and hasattr(settings, 'ssl_cert_file'):
+            saved_ssl_cert_file = self.settings.value("network/ssl_cert_file", None)
+            if saved_ssl_cert_file:
+                settings.ssl_cert_file = saved_ssl_cert_file
+                os.environ['SSL_CERT_FILE'] = saved_ssl_cert_file
+        
+        if not os.getenv('HTTP_PROXY') and hasattr(settings, 'http_proxy'):
+            saved_http_proxy = self.settings.value("network/http_proxy", None)
+            if saved_http_proxy:
+                settings.http_proxy = saved_http_proxy
+                os.environ['HTTP_PROXY'] = saved_http_proxy
+        
+        if not os.getenv('HTTPS_PROXY') and hasattr(settings, 'https_proxy'):
+            saved_https_proxy = self.settings.value("network/https_proxy", None)
+            if saved_https_proxy:
+                settings.https_proxy = saved_https_proxy
+                os.environ['HTTPS_PROXY'] = saved_https_proxy
+    
+    def _save_network_settings_to_qsettings(self):
+        """Save current network settings to QSettings as backup."""
+        # Save network settings that are currently active
+        self.settings.setValue("network/ssl_verify", 'true' if getattr(settings, 'ssl_verify', True) else 'false')
+        self.settings.setValue("network/use_certifi", 'true' if getattr(settings, 'use_certifi', True) else 'false')
+        self.settings.setValue("network/disable_ssl_warnings", 'true' if getattr(settings, 'disable_ssl_warnings', False) else 'false')
+        
+        if hasattr(settings, 'ssl_cert_file') and settings.ssl_cert_file:
+            self.settings.setValue("network/ssl_cert_file", settings.ssl_cert_file)
+        else:
+            self.settings.remove("network/ssl_cert_file")
+        
+        if hasattr(settings, 'http_proxy') and settings.http_proxy:
+            self.settings.setValue("network/http_proxy", settings.http_proxy)
+        else:
+            self.settings.remove("network/http_proxy")
+        
+        if hasattr(settings, 'https_proxy') and settings.https_proxy:
+            self.settings.setValue("network/https_proxy", settings.https_proxy)
+        else:
+            self.settings.remove("network/https_proxy")
     
     
     def update_ui_state(self, processing: bool = False):

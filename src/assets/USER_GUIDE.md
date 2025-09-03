@@ -102,6 +102,18 @@ Access via: **Menu → Settings → Configuration** or **Advanced Settings butto
 - **Base URL**: API endpoint (keep default unless using custom service)
 - **Timeout/Retries**: How long to wait and how many times to retry failed requests
 
+#### Network Tab (Corporate Environments)
+Use this tab if you encounter SSL certificate or network connection errors:
+
+- **SSL Certificate Verification**: Enable/disable SSL verification (disable for corporate networks)
+- **Use Certifi**: Use system certificate bundle for SSL connections
+- **Disable SSL Warnings**: Suppress SSL warning messages
+- **SSL Certificate File**: Custom certificate bundle from IT department
+- **Proxy Settings**: Configure HTTP/HTTPS proxy servers
+- **Test Network Connection**: Verify your configuration works
+
+💡 **Quick Fix for Corporate Networks**: If you get SSL errors, simply uncheck "Enable SSL Certificate Verification" and test the connection.
+
 ---
 
 ## 🔍 Understanding Results
@@ -258,6 +270,140 @@ For developers and advanced users:
 - **Environment**: Uses UV for Python dependency management
 - **Modularity**: Clean separation between PDF processing, AI, validation, and GUI
 - **Documentation**: Comprehensive inline documentation and type hints
+
+---
+
+## ⚠️ Troubleshooting Common Issues
+
+### SSL Certificate Errors (Corporate Networks)
+
+**Problem**: You see errors like "SSL Certificate verification failed" or "SSLError" when testing the API connection.
+
+**Cause**: Many corporate networks use SSL interception/inspection, which replaces website certificates with internal ones. This breaks SSL verification for external APIs.
+
+**🎯 Quick Solution**:
+1. **Open Settings** → **Configuration** → **Network** tab
+2. **Uncheck "Enable SSL Certificate Verification"**
+3. **Click "Test Network Connection"** to verify it works
+4. **Save settings**
+
+**📋 Detailed Solutions**:
+
+#### Option 1: Disable SSL Verification (Fastest)
+```
+Settings → Configuration → Network Tab
+☐ Enable SSL Certificate Verification  ← Uncheck this
+```
+⚠️ **Note**: This reduces security but is often necessary in corporate environments.
+
+#### Option 2: Use Company Certificate Bundle
+If your IT department provides a certificate bundle:
+1. **Get certificate file** from IT department (usually `.pem` or `.crt` file)
+2. **Configure in Network tab**:
+   ```
+   SSL Certificate File: [Browse to your certificate file]
+   ☑ Use Certifi for SSL certificates
+   ```
+
+#### Option 3: Environment Variables (Advanced)
+Add to your `.env` file:
+```
+SSL_VERIFY=false
+USE_CERTIFI=true
+DISABLE_SSL_WARNINGS=true
+```
+
+### Network Connection Errors
+
+**Problem**: "Network connection failed" or timeout errors.
+
+**Solutions**:
+
+#### Check Proxy Settings
+If your company uses a proxy:
+1. **Open Settings** → **Configuration** → **Network** tab
+2. **Configure proxy settings**:
+   ```
+   HTTP Proxy: http://proxy.company.com:8080
+   HTTPS Proxy: https://proxy.company.com:8080
+   ```
+3. **Ask IT department** for correct proxy URLs and authentication
+
+#### Firewall Configuration
+Ensure these connections are allowed:
+- **OpenRouter API**: `https://openrouter.ai/api/v1`
+- **Port 443**: HTTPS traffic to external APIs
+- **IP Whitelisting**: May be required for `openrouter.ai`
+
+### API Key and Authentication Errors
+
+**Problem**: "Invalid API key" or "Authentication failed" errors.
+
+**Solutions**:
+1. **Verify API key**: Copy-paste directly from OpenRouter dashboard
+2. **Check key format**: Should start with `sk-or-v1-`
+3. **Test on different network**: Try from home/mobile hotspot
+4. **Check billing**: Ensure OpenRouter account has available credits
+
+### File Processing Issues
+
+**Problem**: PDFs not processing correctly or "No valid data extracted" errors.
+
+**Solutions**:
+1. **Check file format**: Ensure files are actual PDFs, not scanned images
+2. **File size**: Large files (>10MB) may timeout - adjust settings
+3. **Content quality**: Ensure text is readable and not corrupted
+4. **Merged format**: Verify invoice and PO are in the same PDF file
+
+### Performance and Memory Issues
+
+**Problem**: Application runs slowly or crashes during processing.
+
+**Solutions**:
+1. **Reduce concurrent processing**: Settings → Processing → Uncheck concurrent processing
+2. **Lower file size limit**: Settings → Processing → Reduce max file size
+3. **Close other applications**: Free up system memory
+4. **Process smaller batches**: Move some files out of input folder temporarily
+
+### Common Error Messages and Solutions
+
+| Error Message | Cause | Solution |
+|---------------|-------|----------|
+| `SSLError: certificate verify failed` | Corporate SSL interception | Disable SSL verification in Network settings |
+| `ConnectionError: Failed to establish connection` | Network/firewall blocking | Configure proxy settings or contact IT |
+| `AuthenticationError: Invalid API key` | Wrong or expired API key | Get new key from OpenRouter dashboard |
+| `TimeoutError: Request timed out` | Slow network or large files | Increase timeout in LLM settings |
+| `FileNotFoundError: No PDF files found` | Empty input directory | Place PDF files in `data/input/` folder |
+| `PermissionError: Access denied` | File permissions or antivirus | Run as administrator or exclude from antivirus |
+
+### Getting Detailed Error Information
+
+1. **Enable Debug Logging**:
+   - Settings → Processing → Log Level → DEBUG
+   - Restart application
+
+2. **Check Log Files**:
+   - Main menu → View → Open Log Folder
+   - Look for recent `.log` files
+   - Copy relevant error messages
+
+3. **Test Individual Components**:
+   - Test network connection in Network settings
+   - Test API key in LLM settings
+   - Process one file at a time
+
+### When to Contact IT Support
+
+Contact your IT department if you encounter:
+- **Persistent SSL certificate errors** after trying solutions
+- **Proxy authentication requirements** (username/password)
+- **Firewall blocking** external API connections
+- **Network policies** preventing application use
+
+Provide them with:
+- Application logs showing the errors
+- Network settings you've tried
+- Confirmation that it works on other networks (if tested)
 
 ---
 

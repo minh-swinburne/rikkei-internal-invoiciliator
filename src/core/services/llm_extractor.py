@@ -4,9 +4,15 @@ Uses provider-agnostic configuration with structured output support.
 """
 
 import json
+import os
+import ssl
 from typing import Any, Optional
+from pathlib import Path
 
 from openai import OpenAI
+import httpx
+import urllib3
+from urllib3.exceptions import InsecureRequestWarning
 from pydantic import ValidationError
 
 from ..models import Invoice, PurchaseOrder, Item
@@ -21,18 +27,124 @@ class LLMExtractor:
         """Initialize the LLM extractor with provider-agnostic configuration."""
         self.logger = get_module_logger('llm_extractor')
         
-        # Use provider-agnostic settings
-        self.client = OpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url
-        )
-        self.model = settings.llm_model
-        self.max_retries = settings.llm_max_retries
-        self.timeout = settings.llm_timeout_sec
+        # Get API configuration
+        api_key = settings.llm_api_key
+        base_url = settings.llm_base_url
+        model = settings.llm_model
         
-        self.logger.info(f"LLM Extractor initialized with model: {self.model}")
-        self.logger.info(f"Base URL: {settings.llm_base_url}")
-        self.logger.info(f"API Key present: {'Yes' if settings.llm_api_key else 'No'}")
+        if not api_key:
+            raise ValueError("LLM API key not configured")
+        
+        # Clean API key
+        api_key = api_key.strip()
+        
+        # Configure SSL settings
+        self._configure_ssl_environment()
+        
+        # Create HTTP client with SSL configuration
+        http_client = self._create_http_client()
+        
+        # Initialize OpenAI client
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=settings.llm_timeout_sec,
+            max_retries=settings.llm_max_retries,
+            http_client=http_client
+        )
+        
+        self.model = model
+        self.base_url = base_url
+        
+        self.logger.info(f"LLM Extractor initialized with model: {model}")
+        self.logger.info(f"Base URL: {base_url}")
+        self.logger.info(f"API Key present: {'Yes' if api_key else 'No'}")
+        self.logger.info(f"SSL Verification: {'Enabled' if settings.ssl_verify else 'Disabled'}")
+        self.logger.info(f"Using certifi: {'Yes' if settings.use_certifi else 'No'}")
+        
+        if not settings.ssl_verify:
+            self.logger.warning("⚠️ SSL verification is DISABLED - only use in corporate environments")
+    
+    def _configure_ssl_environment(self) -> None:
+        """Configure SSL environment variables based on settings."""
+        try:
+            # Configure SSL certificate file using certifi (recommended approach)
+            if settings.use_certifi and settings.ssl_verify:
+                try:
+                    import certifi
+                    cert_file = certifi.where()
+                    os.environ['SSL_CERT_FILE'] = cert_file
+                    os.environ['REQUESTS_CA_BUNDLE'] = cert_file
+                    os.environ['CURL_CA_BUNDLE'] = cert_file
+                    self.logger.info(f"✅ Using certifi SSL certificates: {cert_file}")
+                except ImportError:
+                    self.logger.warning("⚠️ certifi package not available, using system certificates")
+            
+            # Use custom SSL certificate file if specified
+            elif settings.ssl_cert_file and Path(settings.ssl_cert_file).exists():
+                cert_file = settings.ssl_cert_file
+                os.environ['SSL_CERT_FILE'] = cert_file
+                os.environ['REQUESTS_CA_BUNDLE'] = cert_file
+                os.environ['CURL_CA_BUNDLE'] = cert_file
+                self.logger.info(f"✅ Using custom SSL certificate file: {cert_file}")
+            
+            # Disable SSL warnings if requested
+            if settings.disable_ssl_warnings:
+                urllib3.disable_warnings(InsecureRequestWarning)
+                self.logger.info("SSL warnings disabled")
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to configure SSL environment: {e}")
+    
+    def _create_http_client(self) -> httpx.Client:
+        """Create httpx client with appropriate SSL and proxy configuration."""
+        # Base client configuration
+        client_kwargs = {
+            'timeout': httpx.Timeout(settings.llm_timeout_sec),
+            'follow_redirects': True,
+            'limits': httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        }
+        
+        # Configure SSL verification
+        if not settings.ssl_verify:
+            # Disable SSL verification for corporate networks
+            client_kwargs['verify'] = False
+            self.logger.info("🔓 SSL verification disabled for corporate network compatibility")
+            
+        elif settings.ssl_cert_file and Path(settings.ssl_cert_file).exists():
+            # Use custom certificate file
+            client_kwargs['verify'] = settings.ssl_cert_file
+            self.logger.info(f"🔒 Using custom SSL certificate: {settings.ssl_cert_file}")
+            
+        elif settings.use_certifi:
+            # Use certifi certificates (recommended)
+            try:
+                import certifi
+                client_kwargs['verify'] = certifi.where()
+                self.logger.info(f"🔒 Using certifi SSL certificates: {certifi.where()}")
+            except ImportError:
+                self.logger.warning("⚠️ certifi not available, using default SSL verification")
+        
+        # Configure proxy settings
+        proxies = {}
+        if settings.http_proxy:
+            proxies['http://'] = settings.http_proxy
+            self.logger.info(f"🌐 HTTP proxy configured: {settings.http_proxy}")
+            
+        if settings.https_proxy:
+            proxies['https://'] = settings.https_proxy
+            self.logger.info(f"🌐 HTTPS proxy configured: {settings.https_proxy}")
+            
+        if proxies:
+            client_kwargs['proxies'] = proxies
+        
+        try:
+            return httpx.Client(**client_kwargs)
+        except Exception as e:
+            self.logger.error(f"Failed to create HTTP client: {e}")
+            # Fallback to basic client
+            self.logger.info("Creating fallback HTTP client...")
+            return httpx.Client(timeout=httpx.Timeout(settings.llm_timeout_sec))
 
     def extract_invoice_data(self, text: str) -> tuple[Optional[Invoice], Optional[PurchaseOrder]]:
         """Extract invoice and PO data using structured outputs with fallback"""
@@ -276,9 +388,55 @@ class LLMExtractor:
                 self.logger.error(f"Both structured output and fallback failed!")
                 self.logger.error(f"Structured error: {type(e).__name__}: {str(e)}")
                 self.logger.error(f"Fallback error: {type(e2).__name__}: {str(e2)}")
+                
+                # Enhanced error reporting for SSL and network issues
+                self._handle_api_errors(e2)
+                
                 if 'content' in locals():
                     self.logger.error(f"Final response content: {content}")
                 return None
+    
+    def _handle_api_errors(self, error: Exception) -> None:
+        """Provide concise guidance for common API errors."""
+        error_str = str(error).lower()
+        error_type = type(error).__name__
+        
+        # Create a consolidated error message
+        if "ssl" in error_str or "certificate" in error_str:
+            self.logger.error(
+                f"🔒 SSL Certificate Error ({error_type}): Corporate network detected. "
+                f"Quick fix: Add 'SSL_VERIFY=false' and 'DISABLE_SSL_WARNINGS=true' to your .env file. "
+                f"For proper fix, contact IT for corporate SSL certificates."
+            )
+            
+        elif "connection" in error_str or "connect" in error_str:
+            self.logger.error(
+                f"🌐 Network Connection Error ({error_type}): Check firewall settings, "
+                f"configure proxy if needed, or try different network (mobile hotspot)."
+            )
+            
+        elif "timeout" in error_str:
+            self.logger.error(
+                f"⏰ Request Timeout ({error_type}): Increase LLM_TIMEOUT_SECONDS in .env "
+                f"or check network stability."
+            )
+            
+        elif "401" in error_str or "unauthorized" in error_str:
+            self.logger.error(
+                f"🔑 Authentication Failed ({error_type}): Verify API key is correct "
+                f"and has sufficient credits."
+            )
+            
+        elif "rate" in error_str and ("limit" in error_str or "429" in error_str):
+            self.logger.error(
+                f"📈 Rate Limit Exceeded ({error_type}): Wait and retry later, "
+                f"or reduce processing frequency."
+            )
+        else:
+            self.logger.error(f"❓ API Error ({error_type}): {error}")
+        
+        # Add a single help line
+        self.logger.info("🔍 For detailed troubleshooting, check Settings → Network Configuration")
 
     def _clean_json_response(self, content: str) -> str:
         """Remove markdown code block wrappers and clean up response"""

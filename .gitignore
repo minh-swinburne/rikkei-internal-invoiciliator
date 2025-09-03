@@ -1,6 +1,7 @@
 # Dev
 .github/
 # .vscode/
+temp/
 data/
 logs/
 *.log
