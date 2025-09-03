@@ -338,6 +338,7 @@ class ConfigDialog(QDialog):
                 self.save_to_env_file()
             
             QMessageBox.information(self, "Settings Saved", "Settings have been saved successfully.")
+            self.logger.info("Settings saved successfully.")
             self.accept()
             
         except Exception as e:
@@ -376,8 +377,9 @@ STAMP_OFFSET={settings.stamp_offset}
                 f.write(env_content)
             self.logger.info(f"Settings saved to {env_path}")
         except Exception as e:
+            self.logger.error(f"Failed to write .env file: {e}")
             raise Exception(f"Failed to write .env file: {e}")
-    
+
     def reset_to_defaults(self):
         """Reset all settings to defaults."""
         reply = QMessageBox.question(
@@ -428,11 +430,13 @@ STAMP_OFFSET={settings.stamp_offset}
                 max_tokens=10
             )
             
+            self.logger.info("LLM connection test successful.")
             self.connection_status_label.setText("✅ Connection successful")
             self.connection_status_label.setStyleSheet("color: green; font-weight: bold;")
             QMessageBox.information(self, "Connection Test", "LLM connection test successful!")
             
         except Exception as e:
+            self.logger.error(f"LLM connection test failed: {e}")
             self.connection_status_label.setText("❌ Connection failed")
             self.connection_status_label.setStyleSheet("color: red; font-weight: bold;")
             QMessageBox.warning(self, "Connection Test Failed", f"Failed to connect to LLM:\n\n{str(e)}")

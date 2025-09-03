@@ -19,3 +19,4 @@ pyinstaller   # For building executables
 # Utilities
 darkdetect
 pillow
+requests
