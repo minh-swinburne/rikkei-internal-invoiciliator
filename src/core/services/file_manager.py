@@ -42,14 +42,17 @@ class FileManager:
         
         self.logger.info(f"FileManager initialized with output directory: {self.output_dir}")
     
-    def process_pdf(self, pdf_path: str | Path, file_status: str, stamp_status: str = None) -> Path:
+    def process_pdf(self, pdf_path: str | Path, file_status: str, stamp_status: Optional[str] = "DEFAULT") -> Path:
         """
         Process PDF: either stamp and save, or just copy to appropriate directory.
         
         Args:
             pdf_path: Path to the original PDF file
             file_status: Processing status for file placement ("APPROVED" or "REQUIRES REVIEW")
-            stamp_status: Status to show on stamp (defaults to file_status if not provided)
+            stamp_status: Status to show on stamp. 
+                         - "DEFAULT": use file_status for stamping
+                         - None: no stamp will be applied
+                         - Any other string: use that value for stamp
             
         Returns:
             Path to the processed file in the output directory
@@ -57,13 +60,21 @@ class FileManager:
         if isinstance(pdf_path, str):
             pdf_path = Path(pdf_path)
         
-        # Use file_status for stamp if stamp_status not provided
+        # Determine stamping behavior
+        should_stamp = settings.enable_stamping
+        
         if stamp_status is None:
+            # Explicitly told not to stamp
+            should_stamp = False
+        elif stamp_status == "DEFAULT":
+            # Use default behavior - stamp with file_status
             stamp_status = file_status
         
-        if settings.enable_stamping:
+        if should_stamp and stamp_status is not None:
             return self._stamp_and_save_pdf(pdf_path, file_status, stamp_status)
         else:
+            if stamp_status is None:
+                self.logger.info(f"Skipping stamp for {pdf_path.name} (stamp_only_approved setting)")
             return self._copy_pdf_to_directory(pdf_path, file_status)
     
     def _stamp_and_save_pdf(self, pdf_path: Path, file_status: str, stamp_status: str) -> Path:

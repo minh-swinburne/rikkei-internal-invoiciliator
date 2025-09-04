@@ -100,6 +100,12 @@ class ConfigDialog(QDialog):
         self.enable_stamping_cb.setToolTip("Add approval stamps to processed PDF files")
         pdf_layout.addRow(self.enable_stamping_cb)
         
+        # Only stamp approved
+        self.stamp_only_approved_cb = QCheckBox("Only Stamp Approved")
+        self.stamp_only_approved_cb.setToolTip("Only stamp approved invoices, leave problematic ones unstamped")
+        self.stamp_only_approved_cb.stateChanged.connect(self._on_stamp_only_approved_changed)
+        pdf_layout.addRow(self.stamp_only_approved_cb)
+        
         # Always accept
         self.always_accept_cb = QCheckBox("Always Accept (Stamp)")
         self.always_accept_cb.setToolTip("Automatically stamp all invoices as Accepted (use with caution)")
@@ -376,6 +382,19 @@ class ConfigDialog(QDialog):
             self.disable_ssl_warnings_cb.setEnabled(False)
             self.disable_ssl_warnings_cb.setChecked(False)
     
+    def _on_stamp_only_approved_changed(self, state: int) -> None:
+        """Handle stamp only approved checkbox changes."""
+        only_approved_enabled = state == Qt.CheckState.Checked.value
+        
+        # Disable "Always Accept" when "Only Stamp Approved" is enabled
+        # because the always accept behavior doesn't matter in that case
+        self.always_accept_cb.setEnabled(not only_approved_enabled)
+        
+        if only_approved_enabled:
+            # Optionally uncheck always accept when only approved is enabled
+            # since it won't have any effect anyway
+            self.always_accept_cb.setChecked(False)
+    
     def _browse_ssl_cert_file(self) -> None:
         """Browse for SSL certificate file."""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -493,6 +512,7 @@ class ConfigDialog(QDialog):
             'output_dir': settings.output_dir,
             'enable_stamping': settings.enable_stamping,
             'stamp_always_accept': settings.stamp_always_accept,
+            'stamp_only_approved': settings.stamp_only_approved,
             'stamp_pic_name': settings.stamp_pic_name,
             'stamp_position': settings.stamp_position,
             'stamp_offset': settings.stamp_offset,
@@ -508,7 +528,12 @@ class ConfigDialog(QDialog):
         
         # Processing tab
         self.enable_stamping_cb.setChecked(settings.enable_stamping)
+        self.stamp_only_approved_cb.setChecked(settings.stamp_only_approved)
         self.always_accept_cb.setChecked(settings.stamp_always_accept)
+        
+        # Set initial interaction state between the two stamping options
+        self.always_accept_cb.setEnabled(not settings.stamp_only_approved)
+        
         self.pic_name_edit.setText(settings.stamp_pic_name)
         self.stamp_position_combo.setCurrentText(settings.stamp_position)
         self.stamp_offset_edit.setText(settings.stamp_offset)
@@ -555,6 +580,7 @@ class ConfigDialog(QDialog):
             # Update settings object
             settings.enable_stamping = self.enable_stamping_cb.isChecked()
             settings.stamp_always_accept = self.always_accept_cb.isChecked()
+            settings.stamp_only_approved = self.stamp_only_approved_cb.isChecked()
             settings.stamp_pic_name = self.pic_name_edit.text().strip()
             settings.stamp_position = self.stamp_position_combo.currentText()
             settings.stamp_offset = self.stamp_offset_edit.text().strip()
@@ -632,9 +658,10 @@ MAX_FILE_SIZE_MB={settings.max_file_size_mb}
 CONCURRENT_PROCESSING={'true' if settings.concurrent_processing else 'false'}
 
 # PDF Stamping Settings
-ENABLE_STAMPING={'true' if settings.enable_stamping else 'false'}
+ENABLE_STAMPING={'true' if settings.enable_stamping else 'true'}
 STAMP_PIC_NAME={settings.stamp_pic_name}
 STAMP_ALWAYS_ACCEPT={'true' if settings.stamp_always_accept else 'false'}
+STAMP_ONLY_APPROVED={'true' if settings.stamp_only_approved else 'false'}
 STAMP_POSITION={settings.stamp_position}
 STAMP_OFFSET={settings.stamp_offset}
 
@@ -678,7 +705,9 @@ DISABLE_SSL_WARNINGS={'true' if self.disable_ssl_warnings_cb.isChecked() else 'f
         if reply == QMessageBox.StandardButton.Yes:
             # Reset to defaults
             self.enable_stamping_cb.setChecked(True)
-            self.always_accept_cb.setChecked(True)
+            self.stamp_only_approved_cb.setChecked(False)
+            self.always_accept_cb.setChecked(False)
+            self.always_accept_cb.setEnabled(True)  # Re-enable when only_approved is reset
             self.pic_name_edit.setText("Jane Smith")
             self.stamp_position_combo.setCurrentText("bottom-right")
             self.stamp_offset_edit.setText("20,200")

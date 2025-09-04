@@ -5,6 +5,33 @@ All notable changes to the Invoice Reconciliator project will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2025-09-04
+
+### 🆕 Smart Stamping Options
+- **"Only Stamp Approved" Setting**: Added `STAMP_ONLY_APPROVED` option to stamp only approved invoices while leaving problematic ones unstamped for cleaner processing workflows
+- **Intelligent GUI Interaction**: Enhanced configuration dialog with logical checkbox dependencies - "Always Accept" option automatically disables when "Only Stamp Approved" is enabled
+- **Three Stamping Modes**: Users can now choose from Conservative (only approved), Aggressive (all as approved), or Accurate (actual status) stamping behaviors
+
+### 🔧 Configuration Improvements
+- **Reordered Settings Display**: Moved "Only Stamp Approved" option above "Always Accept" in both GUI and documentation for better logical flow
+- **Enhanced User Experience**: Added interactive tooltips and clear descriptions for all stamping options to guide users in choosing appropriate settings
+- **Consistent Configuration Format**: Updated all configuration files (.env.template, README.md) to maintain consistent ordering and format across documentation
+
+### 🏗️ Technical Enhancements
+- **Improved Stamping Logic**: Enhanced engine and file manager to handle null stamp status for unstamped files while maintaining proper file organization
+- **CLI Support**: Added `--stamp-only-approved` command-line argument for automation workflows requiring selective stamping
+- **Comprehensive Testing**: Added dedicated test suites for both functional stamping logic and GUI interaction behavior
+
+### 📚 Documentation Updates
+- **Updated README**: Synchronized configuration examples with .env.template format including proper default values and setting descriptions
+- **Enhanced Help Content**: Improved setting descriptions and tooltips to clarify the relationship between different stamping options
+- **Example Configurations**: Added clear examples of the three stamping modes for different use cases
+
+### 🐛 Improvements
+- **Better Default Values**: Set sensible defaults for new stamping options while maintaining backward compatibility
+- **Settings Validation**: Enhanced configuration validation to prevent conflicting stamp settings
+- **Error Handling**: Improved logging for stamping decisions to help users understand processing behavior
+
 ## [1.2.0] - 2025-09-03
 
 ### 🌐 Corporate Network Support

@@ -69,6 +69,12 @@ def main():
     )
 
     parser.add_argument(
+        "--stamp-only-approved",
+        action="store_true",
+        help="Only stamp approved invoices, leave problematic ones unstamped"
+    )
+
+    parser.add_argument(
         "--stamp-position",
         type=str,
         default="bottom-right",
@@ -82,6 +88,7 @@ def main():
     settings.enable_stamping = args.stamp
     settings.stamp_pic_name = args.stamp_pic_name
     settings.stamp_always_accept = args.stamp_always_accept
+    settings.stamp_only_approved = args.stamp_only_approved
     settings.stamp_position = args.stamp_position
 
     # Set up logging

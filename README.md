@@ -1,4 +1,4 @@
-# Invoice Reconciliator v1.1
+# Invoice Reconciliator
 
 ## Overview
 A professional Python-based application for automated invoice and purchase order (PO) reconciliation. This tool extracts data from merged PDF files, processes them using AI (via OpenRouter API), validates against business rules, and provides comprehensive approval workflows with both GUI and CLI interfaces.
@@ -129,9 +129,11 @@ LLM_TIMEOUT_SEC=30
 
 # Optional: PDF Processing Settings
 ENABLE_STAMPING=true
-STAMP_POSITION=bottom-right
-STAMP_PIC_NAME="Default User"
+STAMP_PIC_NAME="Jane Smith"
+STAMP_ONLY_APPROVED=false
 STAMP_ALWAYS_ACCEPT=false
+STAMP_POSITION=bottom-right
+STAMP_OFFSET=20,200
 ```
 
 ### Supported Models
@@ -148,9 +150,11 @@ The tool supports various models available through OpenRouter:
 - `LLM_MAX_RETRIES`: Maximum retry attempts for API calls (default: 3)
 - `LLM_TIMEOUT_SEC`: Timeout for API requests in seconds (default: 30)
 - `ENABLE_STAMPING`: Enable/disable PDF stamping (default: true)
-- `STAMP_POSITION`: Default stamp position (default: bottom-right)
-- `STAMP_PIC_NAME`: Default person name for stamps (default: "Default User")
+- `STAMP_PIC_NAME`: Default person name for stamps (default: "Jane Smith")
+- `STAMP_ONLY_APPROVED`: Only stamp approved invoices, leave problematic ones unstamped (default: false)
 - `STAMP_ALWAYS_ACCEPT`: Always approve invoices (default: false)
+- `STAMP_POSITION`: Default stamp position (default: bottom-right)
+- `STAMP_OFFSET`: Horizontal,Vertical offset for stamp position (default: 20,200)
 
 ## Usage
 

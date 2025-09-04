@@ -180,8 +180,19 @@ class InvoiceReconciliationEngine:
             
             # Determine stamp text vs file location
             # - File location is always based on actual validation result
-            # - Stamp text can be overridden by always_accept setting
-            stamp_status = "APPROVED" if settings.stamp_always_accept else approval_status
+            # - Stamp logic depends on settings:
+            #   1. If stamp_only_approved=True: only stamp if approved, leave others unstamped
+            #   2. If stamp_only_approved=False: use stamp_always_accept logic (stamp all as approved or use actual status)
+            
+            if settings.stamp_only_approved:
+                # Only stamp approved invoices, leave problematic ones unstamped
+                if approval_status == "APPROVED":
+                    stamp_status = "APPROVED"
+                else:
+                    stamp_status = None  # No stamp for problematic invoices
+            else:
+                # Use existing logic: stamp all as approved if stamp_always_accept, otherwise use actual status
+                stamp_status = "APPROVED" if settings.stamp_always_accept else approval_status
             
             final_path = file_manager.process_pdf(pdf_path, approval_status, stamp_status)
             result.processed_pdf_path = final_path
